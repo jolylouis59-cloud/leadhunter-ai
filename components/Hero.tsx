@@ -60,7 +60,7 @@ export default function Hero() {
 
               <div className="rounded-xl border border-brand-border bg-white p-5">
                 <div className="flex items-center gap-2">
-                  <Logo size={22} />
+                  <Logo size={22} showText={false} />
                   <span className="text-xs font-medium text-gray-500">Réponse IA générée</span>
                 </div>
                 <p className="mt-3 text-sm leading-relaxed text-gray-700">

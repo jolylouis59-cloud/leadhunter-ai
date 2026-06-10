@@ -12,6 +12,10 @@ export const metadata: Metadata = {
   title: "LeadHunter AI — Trouve tes clients B2B",
   description:
     "Scanne Reddit, X et LinkedIn. Score l'intention d'achat. Génère une réponse prête à envoyer.",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
@@ -19,7 +23,12 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr" className={jakarta.variable}>
-      <body className="bg-white font-sans text-brand-text antialiased">
+      <head>
+        <link rel="icon" href="/logo.png" />
+      </head>
+      <body
+        className={`${jakarta.className} bg-white font-sans text-brand-text antialiased`}
+      >
         {children}
       </body>
     </html>
