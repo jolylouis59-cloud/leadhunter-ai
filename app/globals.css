@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .section-padding {
+    @apply py-[60px] md:py-[100px];
+  }
+
+  .container-page {
+    @apply mx-auto max-w-page px-6;
+  }
+
+  .heading {
+    @apply font-extrabold tracking-heading;
+  }
+
+  .btn-primary {
+    @apply rounded-xl bg-brand-cta px-6 py-3 text-sm font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-cta-hover hover:shadow-lg disabled:opacity-60;
+  }
+
+  .btn-outline {
+    @apply rounded-xl border-2 border-brand-cta px-6 py-3 text-sm font-semibold text-brand-cta transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-cta/5 hover:shadow-md;
+  }
+
+  .card-interactive {
+    @apply transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-lg;
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.02); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes pulse-arrow {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50% { transform: translateY(4px); opacity: 1; }
+}
+
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 3s ease-in-out infinite;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.animate-pulse-arrow {
+  animation: pulse-arrow 2s ease-in-out infinite;
+}
+
+.animate-pulse-amber {
+  animation: pulse-amber 2s ease-in-out infinite;
+}
