@@ -3,6 +3,7 @@ create table if not exists public.leads (
   user_id uuid not null references auth.users(id) on delete cascade,
   platform text not null default 'reddit',
   title text not null,
+  post_body text,
   subreddit text,
   username text,
   intent_score integer not null default 0,
@@ -15,6 +16,10 @@ create table if not exists public.leads (
 
 create index if not exists leads_user_id_idx on public.leads (user_id);
 create index if not exists leads_intent_score_idx on public.leads (intent_score desc);
+
+create unique index if not exists leads_user_post_url_idx
+  on public.leads (user_id, post_url)
+  where post_url is not null;
 
 alter table public.leads enable row level security;
 

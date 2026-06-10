@@ -5,6 +5,7 @@ export type Lead = {
   user_id: string;
   platform: string;
   title: string;
+  post_body: string | null;
   subreddit: string | null;
   username: string | null;
   intent_score: number;
