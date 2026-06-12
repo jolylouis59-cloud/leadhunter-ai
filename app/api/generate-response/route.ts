@@ -48,7 +48,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Lead introuvable" }, { status: 404 });
   }
 
-  const response = buildResponse(lead.title, lead.subreddit, lead.username);
+  const response = buildResponse(
+    lead.post_title ?? lead.title,
+    lead.subreddit,
+    lead.author ?? lead.username
+  );
 
   const { error: updateError } = await supabase
     .from("leads")

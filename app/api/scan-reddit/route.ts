@@ -16,7 +16,47 @@ const DEFAULT_CONFIG = {
 
 const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
-const REDDIT_USER_AGENT = "LeadHunterAI/1.0";
+
+const REDDIT_REQUEST_DELAY_MS = 1000;
+const REDDIT_USER_AGENT = "LeadHunterAI/1.0 by Beginning_Brain_8050";
+
+const TEST_LEADS = [
+  {
+    post_title: "Looking for B2B prospecting tool",
+    subreddit: "SaaS",
+    author: "test_user1",
+    intent_score: 85,
+    post_url: "https://reddit.com/test1",
+  },
+  {
+    post_title: "Alternatives to Octolens?",
+    subreddit: "entrepreneur",
+    author: "test_user2",
+    intent_score: 92,
+    post_url: "https://reddit.com/test2",
+  },
+  {
+    post_title: "How to find B2B clients on Reddit",
+    subreddit: "startups",
+    author: "test_user3",
+    intent_score: 78,
+    post_url: "https://reddit.com/test3",
+  },
+  {
+    post_title: "Best cold outreach tools for SaaS?",
+    subreddit: "marketing",
+    author: "test_user4",
+    intent_score: 81,
+    post_url: "https://reddit.com/test4",
+  },
+  {
+    post_title: "Need help with lead generation",
+    subreddit: "Entrepreneur_Ride_Along",
+    author: "test_user5",
+    intent_score: 74,
+    post_url: "https://reddit.com/test5",
+  },
+];
 
 type UserConfig = {
   product_description: string;
@@ -40,13 +80,29 @@ type IntentResult = {
   reason: string;
 };
 
+type ScanLogs = {
+  errorLog: string[];
+  debugLog: string[];
+};
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function logDebug(logs: ScanLogs, message: string) {
+  logs.debugLog.push(message);
+  console.log(message);
+}
+
+function logError(logs: ScanLogs, message: string) {
+  logs.errorLog.push(message);
+  console.error(message);
+}
+
 async function fetchUserConfig(
   supabase: ReturnType<typeof createClient>,
-  userId: string
+  userId: string,
+  logs: ScanLogs
 ): Promise<UserConfig> {
   try {
     const { data, error } = await supabase
@@ -55,7 +111,13 @@ async function fetchUserConfig(
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (error || !data) {
+    if (error) {
+      logError(logs, `Config fetch error: ${error.message}`);
+      return DEFAULT_CONFIG;
+    }
+
+    if (!data) {
+      logDebug(logs, "No user config found — using defaults");
       return DEFAULT_CONFIG;
     }
 
@@ -65,45 +127,162 @@ async function fetchUserConfig(
       keywords: data.keywords?.length ? data.keywords : DEFAULT_CONFIG.keywords,
       subreddits: data.subreddits?.length ? data.subreddits : DEFAULT_CONFIG.subreddits,
     };
-  } catch {
+  } catch (err) {
+    logError(logs, `Config fetch exception: ${String(err)}`);
     return DEFAULT_CONFIG;
   }
 }
 
-async function fetchRedditPosts(
-  subreddit: string,
-  keyword: string
-): Promise<RedditPost[]> {
-  try {
-    const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json?q=${encodeURIComponent(keyword)}&sort=new&limit=10&t=week`;
+async function getRedditAccessToken(logs: ScanLogs): Promise<string | null> {
+  const clientId = process.env.REDDIT_CLIENT_ID;
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
+  const username = process.env.REDDIT_USERNAME;
+  const password = process.env.REDDIT_PASSWORD;
 
-    const res = await fetch(url, {
-      headers: { "User-Agent": REDDIT_USER_AGENT },
-      next: { revalidate: 0 },
+  if (!clientId || !clientSecret || !username || !password) {
+    logError(logs, "Reddit OAuth credentials incomplets");
+    return null;
+  }
+
+  try {
+    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    const tokenRes = await fetch("https://www.reddit.com/api/v1/access_token", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": REDDIT_USER_AGENT,
+      },
+      body:
+        "grant_type=password&username=" +
+        encodeURIComponent(username) +
+        "&password=" +
+        encodeURIComponent(password),
     });
 
-    if (!res.ok) {
-      console.error(`Reddit API error ${subreddit}/${keyword}: ${res.status}`);
+    const tokenText = await tokenRes.text();
+    console.log("Reddit token status:", tokenRes.status);
+    logDebug(logs, `Reddit token status: ${tokenRes.status}`);
+
+    if (!tokenRes.ok) {
+      logError(logs, `Reddit token error: ${tokenRes.status} ${tokenText.slice(0, 200)}`);
+      return null;
+    }
+
+    const { access_token } = JSON.parse(tokenText) as { access_token?: string };
+    if (!access_token) {
+      logError(logs, "Reddit token response sans access_token");
+      return null;
+    }
+
+    logDebug(logs, "Reddit OAuth token obtenu");
+    return access_token;
+  } catch (err) {
+    logError(logs, `Reddit token exception: ${String(err)}`);
+    return null;
+  }
+}
+
+async function insertTestLeads(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  logs: ScanLogs
+): Promise<number> {
+  let insertCount = 0;
+
+  logDebug(logs, "Mode test — insertion de 5 leads fictifs");
+
+  for (const lead of TEST_LEADS) {
+    const { error: insertError } = await supabase.from("leads").upsert(
+      {
+        user_id: userId,
+        platform: "reddit",
+        post_title: lead.post_title,
+        post_body: "",
+        post_url: lead.post_url,
+        subreddit: lead.subreddit,
+        author: lead.author,
+        intent_score: lead.intent_score,
+        status: "new",
+      },
+      {
+        onConflict: "user_id,post_url",
+        ignoreDuplicates: false,
+      }
+    );
+
+    if (insertError) {
+      console.error("INSERT ERROR (test):", insertError);
+      logError(logs, `Test insert failed: ${insertError.message}`);
+    } else {
+      insertCount++;
+      logDebug(logs, `Test lead inserted: ${lead.post_title}`);
+    }
+  }
+
+  return insertCount;
+}
+
+async function fetchRedditPosts(
+  subreddit: string,
+  keyword: string,
+  accessToken: string,
+  logs: ScanLogs
+): Promise<RedditPost[]> {
+  console.log("3. Scanning r/" + subreddit + " with keyword:", keyword);
+  logDebug(logs, `Scanning r/${subreddit} keyword="${keyword}"`);
+
+  try {
+    const url = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/search?q=${encodeURIComponent(keyword)}&sort=new&limit=25&t=month&restrict_sr=1`;
+
+    console.log("Reddit URL:", url);
+    logDebug(logs, `Reddit URL: ${url}`);
+
+    const searchRes = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "User-Agent": REDDIT_USER_AGENT,
+      },
+      cache: "no-store",
+    });
+
+    console.log("Reddit status:", searchRes.status);
+    console.log("4. Reddit response status:", searchRes.status);
+    logDebug(logs, `Reddit r/${subreddit} "${keyword}" → status ${searchRes.status}`);
+
+    const text = await searchRes.text();
+    console.log("Reddit response preview:", text.slice(0, 200));
+    logDebug(logs, `Reddit response preview: ${text.slice(0, 200)}`);
+
+    if (!searchRes.ok) {
+      const msg = `Reddit API error r/${subreddit}/${keyword}: ${searchRes.status} ${text.slice(0, 200)}`;
+      logError(logs, msg);
       return [];
     }
 
-    const json = await res.json();
-    const children = json?.data?.children ?? [];
+    const data = JSON.parse(text);
+    const children = data?.data?.children ?? [];
 
-    return children
+    const posts = children
       .map((child: { data?: Record<string, unknown> }) => child.data)
       .filter(Boolean)
-      .map((data: Record<string, unknown>) => ({
-        title: String(data.title ?? ""),
-        selftext: String(data.selftext ?? ""),
-        score: Number(data.score ?? 0),
-        permalink: String(data.permalink ?? ""),
-        subreddit: String(data.subreddit ?? subreddit),
-        author: String(data.author ?? ""),
-        created_utc: Number(data.created_utc ?? 0),
+      .map((postData: Record<string, unknown>) => ({
+        title: String(postData.title ?? ""),
+        selftext: String(postData.selftext ?? ""),
+        score: Number(postData.score ?? 0),
+        permalink: String(postData.permalink ?? ""),
+        subreddit: String(postData.subreddit ?? subreddit),
+        author: String(postData.author ?? ""),
+        created_utc: Number(postData.created_utc ?? 0),
       }));
+
+    console.log("5. Posts found:", posts.length);
+    logDebug(logs, `Posts found for r/${subreddit} "${keyword}": ${posts.length}`);
+
+    return posts;
   } catch (err) {
-    console.error(`Reddit fetch failed ${subreddit}/${keyword}:`, err);
+    const msg = `Reddit fetch failed r/${subreddit}/${keyword}: ${String(err)}`;
+    logError(logs, msg);
     return [];
   }
 }
@@ -111,11 +290,12 @@ async function fetchRedditPosts(
 async function scoreWithClaude(
   post: RedditPost,
   config: UserConfig,
-  subreddit: string
+  subreddit: string,
+  logs: ScanLogs
 ): Promise<IntentResult | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.error("ANTHROPIC_API_KEY manquante");
+    logError(logs, "ANTHROPIC_API_KEY manquante");
     return null;
   }
 
@@ -151,7 +331,8 @@ Réponds UNIQUEMENT avec ce JSON sans texte autour :
     });
 
     if (!response.ok) {
-      console.error("Claude API error:", response.status, await response.text());
+      const errText = await response.text();
+      logError(logs, `Claude API error ${response.status}: ${errText.slice(0, 200)}`);
       return null;
     }
 
@@ -160,23 +341,33 @@ Réponds UNIQUEMENT avec ce JSON sans texte autour :
     const jsonMatch = text.match(/\{[\s\S]*\}/);
 
     if (!jsonMatch) {
-      console.error("Claude response sans JSON:", text);
+      logError(logs, `Claude response sans JSON: ${text.slice(0, 200)}`);
       return null;
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as IntentResult;
     const score = Math.min(100, Math.max(0, Number(parsed.score)));
 
-    if (Number.isNaN(score)) return null;
+    if (Number.isNaN(score)) {
+      logError(logs, `Claude score invalide pour: ${post.title}`);
+      return null;
+    }
+
+    console.log("6. Claude score:", score, "for post:", post.title);
+    logDebug(logs, `Claude score ${score} — "${post.title.slice(0, 60)}…"`);
 
     return { score, reason: String(parsed.reason ?? "") };
   } catch (err) {
-    console.error("Claude scoring failed:", err);
+    logError(logs, `Claude scoring failed: ${String(err)}`);
     return null;
   }
 }
 
 export async function POST() {
+  const errorLog: string[] = [];
+  const debugLog: string[] = [];
+  const logs: ScanLogs = { errorLog, debugLog };
+
   try {
     const supabase = createClient();
 
@@ -185,26 +376,87 @@ export async function POST() {
       error: authError,
     } = await supabase.auth.getUser();
 
+    console.log("1. Auth user:", user?.id);
+    logDebug(logs, `Auth user: ${user?.id ?? "none"}`);
+
     if (authError || !user) {
-      return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+      logError(logs, `Auth failed: ${authError?.message ?? "no user"}`);
+      return NextResponse.json(
+        { success: false, error: "Non autorisé", errors: errorLog, debug: debugLog },
+        { status: 401 }
+      );
     }
 
-    const config = await fetchUserConfig(supabase, user.id);
+    const config = await fetchUserConfig(supabase, user.id, logs);
+    console.log("2. Config loaded:", config);
+    logDebug(
+      logs,
+      `Config: ${config.subreddits.length} subreddits, ${config.keywords.length} keywords`
+    );
+
+    if (!process.env.REDDIT_CLIENT_ID?.trim()) {
+      logDebug(logs, "REDDIT_CLIENT_ID vide — mode test");
+      const insertCount = await insertTestLeads(supabase, user.id, logs);
+
+      return NextResponse.json({
+        success: true,
+        mode: "test",
+        leads_found: TEST_LEADS.length,
+        leads_inserted: insertCount,
+        leads_scored: 0,
+        leads_below_threshold: 0,
+        reddit_fetches: 0,
+        errors: errorLog,
+        debug: debugLog,
+      });
+    }
+
+    const accessToken = await getRedditAccessToken(logs);
+    if (!accessToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Impossible d'obtenir le token Reddit OAuth",
+          errors: errorLog,
+          debug: debugLog,
+        },
+        { status: 500 }
+      );
+    }
 
     const postsMap = new Map<string, RedditPost>();
+    let redditFetchCount = 0;
+    let redditPostsTotal = 0;
 
     for (const subreddit of config.subreddits) {
       for (const keyword of config.keywords) {
-        const posts = await fetchRedditPosts(subreddit, keyword);
+        redditFetchCount++;
+        const posts = await fetchRedditPosts(subreddit, keyword, accessToken, logs);
+        redditPostsTotal += posts.length;
+
         for (const post of posts) {
-          if (!post.permalink || post.score < 1) continue;
+          if (!post.permalink) {
+            logDebug(logs, `Skipped post (no permalink): ${post.title}`);
+            continue;
+          }
+          if (post.score < 1) {
+            logDebug(logs, `Skipped low score (${post.score}): ${post.title}`);
+            continue;
+          }
           const postUrl = `https://reddit.com${post.permalink}`;
           if (!postsMap.has(postUrl)) {
             postsMap.set(postUrl, post);
           }
         }
+
+        await sleep(REDDIT_REQUEST_DELAY_MS);
       }
     }
+
+    logDebug(
+      logs,
+      `Reddit summary: ${redditFetchCount} fetches, ${redditPostsTotal} raw posts, ${postsMap.size} unique`
+    );
 
     const allPosts = Array.from(postsMap.entries()).map(([url, post]) => ({
       postUrl: url,
@@ -216,24 +468,36 @@ export async function POST() {
     let existingUrls = new Set<string>();
     if (postUrls.length > 0) {
       try {
-        const { data: existing } = await supabase
+        const { data: existing, error: dupError } = await supabase
           .from("leads")
           .select("post_url")
           .eq("user_id", user.id)
           .in("post_url", postUrls);
 
+        if (dupError) {
+          logError(logs, `Duplicate check error: ${dupError.message}`);
+        }
+
         existingUrls = new Set(
           (existing ?? []).map((r: { post_url: string }) => r.post_url).filter(Boolean)
         );
+        logDebug(logs, `Existing leads in DB: ${existingUrls.size}`);
       } catch (err) {
-        console.error("Erreur check doublons:", err);
+        logError(logs, `Duplicate check exception: ${String(err)}`);
       }
     }
 
     const newPosts = allPosts.filter((p) => !existingUrls.has(p.postUrl));
     const postsToScore = newPosts.slice(0, MAX_POSTS_TO_SCORE);
 
+    logDebug(
+      logs,
+      `To score: ${postsToScore.length} (new: ${newPosts.length}, max: ${MAX_POSTS_TO_SCORE})`
+    );
+
     let insertCount = 0;
+    let scoredCount = 0;
+    let belowThreshold = 0;
 
     for (let i = 0; i < postsToScore.length; i++) {
       const { postUrl, post } = postsToScore[i];
@@ -242,46 +506,83 @@ export async function POST() {
         await sleep(CLAUDE_DELAY_MS);
       }
 
-      const intent = await scoreWithClaude(post, config, post.subreddit);
-      if (!intent || intent.score < 30) continue;
+      const intent = await scoreWithClaude(post, config, post.subreddit, logs);
+      scoredCount++;
+
+      if (!intent) {
+        logDebug(logs, `No intent result for: ${post.title}`);
+        continue;
+      }
+
+      if (intent.score < 20) {
+        belowThreshold++;
+        logDebug(logs, `Below threshold (${intent.score}): ${post.title}`);
+        continue;
+      }
 
       try {
-        const leadRow = {
-          user_id: user.id,
-          platform: "reddit",
-          title: post.title,
-          post_body: post.selftext?.slice(0, 1000) ?? null,
-          post_url: postUrl,
-          subreddit: post.subreddit,
-          username: post.author,
-          intent_score: intent.score,
-          status: "new",
-          post_created_at: new Date(post.created_utc * 1000).toISOString(),
-        };
-
-        const { error: upsertError } = await supabase
+        const score = intent.score;
+        const { data: insertData, error: insertError } = await supabase
           .from("leads")
-          .upsert(leadRow, { onConflict: "user_id,post_url", ignoreDuplicates: true });
+          .upsert(
+            {
+              user_id: user.id,
+              platform: "reddit",
+              post_title: post.title,
+              post_body: post.selftext?.slice(0, 1000) || "",
+              post_url: "https://reddit.com" + post.permalink,
+              subreddit: post.subreddit,
+              author: post.author,
+              intent_score: score,
+              status: "new",
+            },
+            {
+              onConflict: "user_id,post_url",
+              ignoreDuplicates: false,
+            }
+          );
 
-        if (!upsertError) {
-          insertCount++;
+        console.log("7. Inserted lead:", { insertData, insertError });
+
+        if (insertError) {
+          console.error("INSERT ERROR:", insertError);
+          debugLog.push("Insert failed: " + insertError.message);
+          logError(logs, `Insert failed: ${insertError.message}`);
         } else {
-          console.error("Upsert lead error:", upsertError.message);
+          debugLog.push("Inserted: " + post.title);
+          insertCount++;
+          logDebug(logs, `✓ Lead inserted (score ${score}): ${post.title.slice(0, 50)}`);
         }
       } catch (err) {
-        console.error("Insert lead failed:", err);
+        logError(logs, `Insert lead exception: ${String(err)}`);
       }
     }
+
+    logDebug(
+      logs,
+      `Done — scored: ${scoredCount}, below threshold: ${belowThreshold}, inserted: ${insertCount}`
+    );
 
     return NextResponse.json({
       success: true,
       leads_found: allPosts.length,
       leads_inserted: insertCount,
+      leads_scored: scoredCount,
+      leads_below_threshold: belowThreshold,
+      reddit_fetches: redditFetchCount,
+      errors: errorLog,
+      debug: debugLog,
     });
-  } catch (err) {
-    console.error("Scan Reddit error:", err);
+  } catch (e) {
+    console.error("SCAN ERROR:", e);
+    errorLog.push(`SCAN ERROR: ${String(e)}`);
     return NextResponse.json(
-      { error: "Erreur lors du scan Reddit" },
+      {
+        success: false,
+        error: "Erreur lors du scan Reddit",
+        errors: errorLog,
+        debug: debugLog,
+      },
       { status: 500 }
     );
   }

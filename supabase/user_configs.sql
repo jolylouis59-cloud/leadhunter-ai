@@ -36,3 +36,8 @@ alter table public.leads add column if not exists post_body text;
 create unique index if not exists leads_user_post_url_idx
   on public.leads (user_id, post_url)
   where post_url is not null;
+
+-- Migration Stripe : plan & abonnement
+alter table public.user_configs add column if not exists plan text default 'free';
+alter table public.user_configs add column if not exists leads_limit integer default 0;
+alter table public.user_configs add column if not exists stripe_customer_id text;

@@ -38,3 +38,9 @@ create policy "Users can update own leads"
 create policy "Users can delete own leads"
   on public.leads for delete
   using (auth.uid() = user_id);
+
+-- Migration: colonnes requises par le scanner
+alter table public.leads add column if not exists post_url text;
+alter table public.leads add column if not exists post_body text;
+alter table public.leads add column if not exists post_title text;
+alter table public.leads add column if not exists author text;

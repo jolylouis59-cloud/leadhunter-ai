@@ -76,7 +76,23 @@ export default function DashboardPage() {
     setScanning(true);
     try {
       const res = await fetch("/api/scan-reddit", { method: "POST" });
-      if (res.ok) await fetchLeads();
+      const result = await res.json();
+      console.log("Scan result:", result);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("intent_score", { ascending: false });
+
+      setLeads(data || []);
+    } catch (e) {
+      alert("Erreur scan: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setScanning(false);
     }

@@ -37,30 +37,43 @@ const DEFAULT_SUBREDDITS = [
 
 const PLANS = [
   {
+    key: "starter",
     name: "Starter",
     price: "49€",
     period: "/mois",
     desc: "Pour les solopreneurs",
     features: ["300 leads/mois", "Reddit + X + LinkedIn", "Intent Score IA"],
     popular: false,
+    priceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID ?? "",
   },
   {
+    key: "growth",
     name: "Growth",
     price: "99€",
     period: "/mois",
     desc: "Pour scaler ton acquisition",
     features: ["1000 leads/mois", "Content Studio", "Alertes Slack + email"],
     popular: true,
+    priceId: process.env.NEXT_PUBLIC_STRIPE_GROWTH_PRICE_ID ?? "",
   },
   {
+    key: "agency",
     name: "Agency",
     price: "199€",
     period: "/mois",
     desc: "Pour les agences",
     features: ["Leads illimités", "5 workspaces", "API access"],
     popular: false,
+    priceId: process.env.NEXT_PUBLIC_STRIPE_AGENCY_PRICE_ID ?? "",
   },
 ];
+
+const PLAN_LABELS: Record<string, string> = {
+  free: "Essai gratuit",
+  starter: "Starter",
+  growth: "Growth",
+  agency: "Agency",
+};
 
 function Toggle({
   enabled,
@@ -172,6 +185,10 @@ export default function SettingsPage() {
   const [weeklyDigest, setWeeklyDigest] = useState(true);
 
   const [userEmail, setUserEmail] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
+  const [currentPlan, setCurrentPlan] = useState("free");
+  const [leadsLimit, setLeadsLimit] = useState(0);
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -192,10 +209,13 @@ export default function SettingsPage() {
       }
 
       setUserEmail(user.email ?? "");
+      setUserId(user.id);
 
       const { data, error } = await supabase
         .from("user_configs")
-        .select("product_description, target, keywords, subreddits")
+        .select(
+          "product_description, target, keywords, subreddits, plan, leads_limit"
+        )
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -204,6 +224,8 @@ export default function SettingsPage() {
         if (data.target) setTarget(data.target);
         if (data.keywords?.length) setKeywords(data.keywords);
         if (data.subreddits?.length) setSubreddits(data.subreddits);
+        if (data.plan) setCurrentPlan(data.plan);
+        if (typeof data.leads_limit === "number") setLeadsLimit(data.leads_limit);
       }
 
       setLoading(false);
@@ -292,6 +314,45 @@ export default function SettingsPage() {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
+  }
+
+  async function handleChoosePlan(priceId: string, planKey: string) {
+    if (!priceId) {
+      setToast("Price ID Stripe non configuré pour ce plan.");
+      return;
+    }
+
+    if (!userId || !userEmail) {
+      setToast("Connecte-toi pour choisir un plan.");
+      return;
+    }
+
+    setCheckoutLoading(planKey);
+
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceId,
+          userId,
+          userEmail,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.url) {
+        setToast(data.error || "Erreur lors de la création du checkout");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch (e) {
+      setToast("Erreur checkout: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setCheckoutLoading(null);
+    }
   }
 
   function renderBadges(items: string[], onRemove: (item: string) => void) {
@@ -619,7 +680,16 @@ export default function SettingsPage() {
       {activeTab === "billing" && (
         <div>
           <p style={{ margin: "0 0 16px", fontSize: "14px", color: colors.textMuted }}>
-            Plan actuel : <strong style={{ color: colors.text }}>Essai gratuit</strong>
+            Plan actuel :{" "}
+            <strong style={{ color: colors.text }}>
+              {PLAN_LABELS[currentPlan] ?? currentPlan}
+            </strong>
+            {leadsLimit > 0 && (
+              <span>
+                {" "}
+                — {leadsLimit >= 999999 ? "leads illimités" : `${leadsLimit} leads/mois`}
+              </span>
+            )}
           </p>
           <div
             style={
@@ -693,6 +763,10 @@ export default function SettingsPage() {
                 </ul>
                 <button
                   type="button"
+                  onClick={() => handleChoosePlan(plan.priceId, plan.key)}
+                  disabled={
+                    checkoutLoading !== null || currentPlan === plan.key
+                  }
                   style={{
                     ...(plan.popular ? primaryButton(false, false) : {}),
                     marginTop: "20px",
@@ -701,14 +775,40 @@ export default function SettingsPage() {
                     fontSize: "13px",
                     fontWeight: 600,
                     borderRadius: "8px",
-                    cursor: "pointer",
+                    cursor:
+                      checkoutLoading !== null || currentPlan === plan.key
+                        ? "not-allowed"
+                        : "pointer",
                     fontFamily,
-                    background: plan.popular ? colors.accent : "transparent",
-                    color: plan.popular ? "#FFFFFF" : colors.accent,
-                    border: plan.popular ? "none" : `1.5px solid ${colors.accent}`,
+                    opacity:
+                      checkoutLoading !== null && checkoutLoading !== plan.key
+                        ? 0.6
+                        : 1,
+                    background:
+                      currentPlan === plan.key
+                        ? "#E5E7EB"
+                        : plan.popular
+                          ? colors.accent
+                          : "transparent",
+                    color:
+                      currentPlan === plan.key
+                        ? colors.textMuted
+                        : plan.popular
+                          ? "#FFFFFF"
+                          : colors.accent,
+                    border:
+                      currentPlan === plan.key
+                        ? "1px solid #E5E7EB"
+                        : plan.popular
+                          ? "none"
+                          : `1.5px solid ${colors.accent}`,
                   }}
                 >
-                  Essayer 7 jours gratuits
+                  {currentPlan === plan.key
+                    ? "Plan actuel"
+                    : checkoutLoading === plan.key
+                      ? "Redirection…"
+                      : "Choisir ce plan"}
                 </button>
               </div>
             ))}

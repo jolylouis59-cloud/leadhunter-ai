@@ -23,9 +23,12 @@ export default function LeadCard({
   const [ignoreHover, setIgnoreHover] = useState(false);
 
   const scoreColor = intentColor(lead.intent_score);
+  const displayTitle = lead.post_title ?? lead.title ?? "";
+  const displayAuthor = lead.author ?? lead.username;
+
   const meta = [
     lead.subreddit ? `r/${lead.subreddit}` : null,
-    lead.username ? `u/${lead.username}` : null,
+    displayAuthor ? `u/${displayAuthor}` : null,
     formatRelativeTime(lead.post_created_at),
   ]
     .filter(Boolean)
@@ -75,7 +78,7 @@ export default function LeadCard({
               overflow: "hidden",
             }}
           >
-            {lead.title}
+            {displayTitle}
           </h3>
 
           <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "13px", color: colors.textMuted }}>
