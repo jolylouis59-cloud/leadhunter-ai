@@ -1,6 +1,6 @@
 import EmailForm from "./EmailForm";
 
-const badges = ["✓ 7 jours gratuits", "✓ Sans CB", "✓ Setup 2 min"];
+const badges = ["✓ Sans CB", "✓ Setup 2 min"];
 
 export default function FinalCTA() {
   return (

@@ -316,7 +316,9 @@ export default function SettingsPage() {
     router.refresh();
   }
 
-  async function handleChoosePlan(priceId: string, planKey: string) {
+  async function handleSelectPlan(priceId: string, planKey: string) {
+    console.log("click plan", priceId);
+
     if (!priceId) {
       setToast("Price ID Stripe non configuré pour ce plan.");
       return;
@@ -763,10 +765,8 @@ export default function SettingsPage() {
                 </ul>
                 <button
                   type="button"
-                  onClick={() => handleChoosePlan(plan.priceId, plan.key)}
-                  disabled={
-                    checkoutLoading !== null || currentPlan === plan.key
-                  }
+                  onClick={() => handleSelectPlan(plan.priceId, plan.key)}
+                  disabled={checkoutLoading === plan.key}
                   style={{
                     ...(plan.popular ? primaryButton(false, false) : {}),
                     marginTop: "20px",
@@ -775,40 +775,15 @@ export default function SettingsPage() {
                     fontSize: "13px",
                     fontWeight: 600,
                     borderRadius: "8px",
-                    cursor:
-                      checkoutLoading !== null || currentPlan === plan.key
-                        ? "not-allowed"
-                        : "pointer",
+                    cursor: checkoutLoading === plan.key ? "wait" : "pointer",
                     fontFamily,
-                    opacity:
-                      checkoutLoading !== null && checkoutLoading !== plan.key
-                        ? 0.6
-                        : 1,
-                    background:
-                      currentPlan === plan.key
-                        ? "#E5E7EB"
-                        : plan.popular
-                          ? colors.accent
-                          : "transparent",
-                    color:
-                      currentPlan === plan.key
-                        ? colors.textMuted
-                        : plan.popular
-                          ? "#FFFFFF"
-                          : colors.accent,
-                    border:
-                      currentPlan === plan.key
-                        ? "1px solid #E5E7EB"
-                        : plan.popular
-                          ? "none"
-                          : `1.5px solid ${colors.accent}`,
+                    opacity: checkoutLoading !== null && checkoutLoading !== plan.key ? 0.6 : 1,
+                    background: plan.popular ? colors.accent : "transparent",
+                    color: plan.popular ? "#FFFFFF" : colors.accent,
+                    border: plan.popular ? "none" : `1.5px solid ${colors.accent}`,
                   }}
                 >
-                  {currentPlan === plan.key
-                    ? "Plan actuel"
-                    : checkoutLoading === plan.key
-                      ? "Redirection…"
-                      : "Choisir ce plan"}
+                  {checkoutLoading === plan.key ? "Redirection…" : "Choisir ce plan"}
                 </button>
               </div>
             ))}

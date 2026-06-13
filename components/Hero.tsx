@@ -28,7 +28,7 @@ export default function Hero() {
             </div>
 
             <p className="mt-4 text-sm text-gray-400">
-              Déjà 340 entrepreneurs · Essai 7 jours gratuit
+              Déjà 340 entrepreneurs
             </p>
           </div>
 
