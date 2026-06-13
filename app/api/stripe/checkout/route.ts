@@ -3,6 +3,21 @@ import { createClient } from "@/lib/supabase-server";
 import { getPlanFromPriceId, getStripe } from "@/lib/stripe";
 
 export async function POST(req: Request) {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+  if (!stripeSecretKey?.trim()) {
+    console.error(
+      "STRIPE_SECRET_KEY manquante — ajoute-la dans .env.local (côté serveur, sans NEXT_PUBLIC_)"
+    );
+    return NextResponse.json(
+      {
+        error:
+          "Configuration Stripe incomplète : STRIPE_SECRET_KEY manquante sur le serveur.",
+      },
+      { status: 500 }
+    );
+  }
+
   try {
     const { priceId, userId, userEmail } = await req.json();
 
@@ -35,7 +50,7 @@ export async function POST(req: Request) {
       mode: "subscription",
       customer_email: userEmail,
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/dashboard?upgraded=true`,
+      success_url: `${origin}/thank-you`,
       cancel_url: `${origin}/pricing`,
       metadata: {
         user_id: userId,

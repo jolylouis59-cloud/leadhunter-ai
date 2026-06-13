@@ -38,7 +38,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push(tab === "signup" ? "/pricing" : "/dashboard");
     router.refresh();
   }
 
