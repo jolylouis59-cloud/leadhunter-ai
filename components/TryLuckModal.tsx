@@ -511,7 +511,7 @@ export default function TryLuckModal({ open, onClose }: TryLuckModalProps) {
                 lineHeight: 1.6,
               }}
             >
-              On analyse les profils chaque vendredi. Si tu es sélectionné, tu recevras le
+              On revient vers toi sous 1 à 2h. Si tu es sélectionné, tu recevras le
               code directement par email ou téléphone.
             </p>
             <button

@@ -53,7 +53,7 @@ export default function TryLuckSection() {
                 lineHeight: 1.6,
               }}
             >
-              Réponds à 3 questions, on sélectionne les meilleurs profils chaque semaine
+              Réponds à 3 questions, on revient vers toi sous 6 à 12h
             </p>
             <button
               type="button"
