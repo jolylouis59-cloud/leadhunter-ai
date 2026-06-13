@@ -1,3 +1,8 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { colors, fontFamily } from "@/lib/dashboard-styles";
+
 const steps = [
   {
     num: "01",
@@ -16,37 +21,160 @@ const steps = [
   },
 ];
 
-function StepCard({ num, title, desc }: { num: string; title: string; desc: string }) {
+function StepCard({
+  num,
+  title,
+  desc,
+  mobile,
+}: {
+  num: string;
+  title: string;
+  desc: string;
+  mobile?: boolean;
+}) {
   return (
-    <div className="card-interactive flex flex-1 flex-col rounded-xl border border-brand-border bg-white p-8 hover:border-brand-cta/20">
-      <span className="text-[48px] font-extrabold leading-none text-brand-cta">{num}</span>
-      <h3 className="mt-4 text-lg font-bold text-brand-text">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-brand-muted">{desc}</p>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        flex: mobile ? "0 0 auto" : 1,
+        minWidth: mobile ? "80vw" : undefined,
+        scrollSnapAlign: mobile ? "center" : undefined,
+        background: colors.card,
+        border: `1px solid ${colors.border}`,
+        borderRadius: "12px",
+        padding: "32px",
+        boxSizing: "border-box",
+      }}
+    >
+      <span
+        style={{
+          fontSize: "48px",
+          fontWeight: 800,
+          lineHeight: 1,
+          color: colors.accent,
+        }}
+      >
+        {num}
+      </span>
+      <h3
+        style={{
+          margin: "16px 0 0",
+          fontSize: "18px",
+          fontWeight: 700,
+          color: colors.text,
+        }}
+      >
+        {title}
+      </h3>
+      <p
+        style={{
+          margin: "8px 0 0",
+          fontSize: "14px",
+          lineHeight: 1.6,
+          color: colors.textMuted,
+        }}
+      >
+        {desc}
+      </p>
     </div>
   );
 }
 
 export default function HowItWorks() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   return (
-    <section className="section-padding bg-white">
-      <div className="container-page">
-        <h2 className="heading text-center text-3xl text-brand-text md:text-4xl">
+    <section
+      style={{
+        background: colors.card,
+        padding: "64px 24px",
+        fontFamily,
+      }}
+    >
+      <style>{`
+        .how-it-works-slider::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
+
+      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
+        <h2
+          style={{
+            margin: 0,
+            textAlign: "center",
+            fontSize: "clamp(24px, 4vw, 36px)",
+            fontWeight: 800,
+            color: colors.text,
+            letterSpacing: "-0.02em",
+          }}
+        >
           Comment ça marche
         </h2>
 
-        <div className="mt-14 hidden items-stretch gap-4 md:flex">
-          <StepCard {...steps[0]} />
-          <span className="flex shrink-0 items-center text-2xl text-brand-cta">→</span>
-          <StepCard {...steps[1]} />
-          <span className="flex shrink-0 items-center text-2xl text-brand-cta">→</span>
-          <StepCard {...steps[2]} />
-        </div>
-
-        <div className="mt-14 grid gap-6 md:hidden">
-          {steps.map((s) => (
-            <StepCard key={s.num} {...s} />
-          ))}
-        </div>
+        {isMobile ? (
+          <div
+            className="how-it-works-slider"
+            style={{
+              marginTop: "40px",
+              display: "flex",
+              gap: "16px",
+              overflowX: "scroll",
+              scrollSnapType: "x mandatory",
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-x",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+              padding: "4px 0 8px",
+            }}
+          >
+            {steps.map((s) => (
+              <StepCard key={s.num} {...s} mobile />
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: "56px",
+              display: "flex",
+              alignItems: "stretch",
+              gap: "16px",
+            }}
+          >
+            <StepCard {...steps[0]} />
+            <span
+              style={{
+                display: "flex",
+                flexShrink: 0,
+                alignItems: "center",
+                fontSize: "24px",
+                color: colors.accent,
+              }}
+            >
+              →
+            </span>
+            <StepCard {...steps[1]} />
+            <span
+              style={{
+                display: "flex",
+                flexShrink: 0,
+                alignItems: "center",
+                fontSize: "24px",
+                color: colors.accent,
+              }}
+            >
+              →
+            </span>
+            <StepCard {...steps[2]} />
+          </div>
+        )}
       </div>
     </section>
   );
