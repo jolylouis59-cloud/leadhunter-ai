@@ -119,7 +119,7 @@ export default function Pricing() {
         </div>
 
         <p className="mx-auto mt-10 max-w-2xl text-center text-sm text-brand-muted">
-          Essai 7 jours sans engagement · Aucune CB requise · Annulation en 1 clic
+          (Prix HT, TVA applicable selon votre pays) · Annulation en 1 clic
         </p>
       </div>
     </section>

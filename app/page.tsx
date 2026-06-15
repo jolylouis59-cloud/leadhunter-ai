@@ -8,6 +8,7 @@ import Testimonials from "@/components/Testimonials";
 import TryLuckSection from "@/components/TryLuckSection";
 import Pricing from "@/components/Pricing";
 import FinalCTA from "@/components/FinalCTA";
+import FAQ from "@/components/FAQ";
 import Footer from "@/components/Footer";
 
 export default function Home() {
@@ -23,6 +24,7 @@ export default function Home() {
       <TryLuckSection />
       <Pricing />
       <FinalCTA />
+      <FAQ />
       <Footer />
     </main>
   );
