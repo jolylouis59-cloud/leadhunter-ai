@@ -549,7 +549,7 @@ export default function DashboardPage() {
             <p style={{ margin: "0 0 20px", fontSize: "14px", color: colors.textMuted }}>{fetchError}</p>
             <button
               type="button"
-              onClick={fetchLeads}
+              onClick={() => fetchLeads()}
               style={{
                 ...primaryButton(false, false),
                 padding: "10px 24px",
