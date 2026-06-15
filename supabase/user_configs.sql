@@ -41,3 +41,15 @@ create unique index if not exists leads_user_post_url_idx
 alter table public.user_configs add column if not exists plan text default 'free';
 alter table public.user_configs add column if not exists leads_limit integer default 0;
 alter table public.user_configs add column if not exists stripe_customer_id text;
+
+-- Notifications & préférences
+alter table public.user_configs add column if not exists alert_email text;
+alter table public.user_configs add column if not exists slack_webhook_url text;
+alter table public.user_configs add column if not exists email_alerts boolean default true;
+alter table public.user_configs add column if not exists slack_alerts boolean default false;
+alter table public.user_configs add column if not exists auto_scan boolean default false;
+alter table public.user_configs add column if not exists auto_scan_hour integer default 8;
+alter table public.user_configs add column if not exists weekly_digest boolean default true;
+alter table public.user_configs add column if not exists trial_ends_at timestamptz;
+alter table public.user_configs add column if not exists billing_name text;
+alter table public.user_configs add column if not exists billing_address text;

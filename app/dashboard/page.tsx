@@ -2,12 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import LeadCard from "@/components/dashboard/LeadCard";
+import LeadSkeleton from "@/components/dashboard/LeadSkeleton";
 import ResponseModal from "@/components/dashboard/ResponseModal";
+import Toast from "@/components/dashboard/Toast";
 import { supabase } from "@/lib/supabase-client";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
+import { filterRealLeads, getLeadTimestamp } from "@/lib/leads-utils";
 import type { Lead, LeadStatus } from "@/lib/types";
 
 type FilterTab = "all" | LeadStatus;
+type PlatformFilter = "all" | "reddit" | "x" | "linkedin";
+type SortOption = "score_desc" | "score_asc" | "date_desc" | "date_asc";
+
+const PAGE_SIZE = 20;
 
 const TABS: { key: FilterTab; label: string }[] = [
   { key: "all", label: "Tous" },
@@ -16,68 +23,162 @@ const TABS: { key: FilterTab; label: string }[] = [
   { key: "ignored", label: "Ignoré" },
 ];
 
-const STATS = [
-  { key: "total", label: "Total leads", icon: "📊" },
-  { key: "new", label: "Leads nouveaux", icon: "🆕" },
-  { key: "responded", label: "Répondus", icon: "✅" },
-] as const;
+const PLATFORM_FILTERS: { key: PlatformFilter; label: string; color: string }[] = [
+  { key: "all", label: "Toutes", color: colors.accent },
+  { key: "reddit", label: "Reddit", color: "#FF4500" },
+  { key: "x", label: "X", color: "#2B2B2B" },
+  { key: "linkedin", label: "LinkedIn", color: "#0A66C2" },
+];
+
+function countInWeek(leads: Lead[], weeksAgo: number): number {
+  const now = Date.now();
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const end = now - weeksAgo * weekMs;
+  const start = end - weekMs;
+  return leads.filter((l) => {
+    const t = getLeadTimestamp(l);
+    return t >= start && t < end;
+  }).length;
+}
+
+function TrendBadge({ current, previous }: { current: number; previous: number }) {
+  if (current === previous) return null;
+  const up = current > previous;
+  return (
+    <span style={{ fontSize: "12px", fontWeight: 600, color: up ? "#16a34a" : "#dc2626" }}>
+      {up ? "↑" : "↓"} {Math.abs(current - previous)}
+    </span>
+  );
+}
 
 export default function DashboardPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("score_desc");
   const [minScore, setMinScore] = useState(0);
+  const [page, setPage] = useState(1);
   const [modalResponse, setModalResponse] = useState<string | null>(null);
   const [modalLeadId, setModalLeadId] = useState<string | null>(null);
+  const [modalLeadTitle, setModalLeadTitle] = useState("");
   const [scanHover, setScanHover] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+
+  const realLeads = useMemo(() => filterRealLeads(leads), [leads]);
 
   const fetchLeads = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+    setLoading(true);
+    setFetchError(null);
 
-    const { data, error } = await supabase
-      .from("leads")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("intent_score", { ascending: false });
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-    if (!error && data) {
-      setLeads(data as Lead[]);
+      const { data, error } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("intent_score", { ascending: false });
+
+      if (error) {
+        setFetchError(error.message);
+        return;
+      }
+
+      setLeads((data as Lead[]) ?? []);
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "Erreur réseau");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
 
-  const stats = useMemo(
-    () => ({
-      total: leads.length,
-      new: leads.filter((l) => l.status === "new").length,
-      responded: leads.filter((l) => l.status === "responded").length,
-    }),
-    [leads]
-  );
+  const stats = useMemo(() => {
+    const total = realLeads.length;
+    const newCount = realLeads.filter((l) => l.status === "new").length;
+    const responded = realLeads.filter((l) => l.status === "responded").length;
+    const responseRate = total > 0 ? Math.round((responded / total) * 100) : 0;
+    const thisWeek = countInWeek(realLeads, 0);
+    const lastWeek = countInWeek(realLeads, 1);
+    const respondedThisWeek = countInWeek(
+      realLeads.filter((l) => l.status === "responded"),
+      0
+    );
+    const respondedLastWeek = countInWeek(
+      realLeads.filter((l) => l.status === "responded"),
+      1
+    );
+    return {
+      total,
+      new: newCount,
+      responded,
+      responseRate,
+      thisWeek,
+      lastWeek,
+      respondedThisWeek,
+      respondedLastWeek,
+    };
+  }, [realLeads]);
 
   const filteredLeads = useMemo(() => {
-    return leads.filter((lead) => {
+    let result = realLeads.filter((lead) => {
       if (activeTab !== "all" && lead.status !== activeTab) return false;
       if (lead.intent_score < minScore) return false;
+      if (platformFilter !== "all" && (lead.platform ?? "reddit").toLowerCase() !== platformFilter)
+        return false;
       return true;
     });
-  }, [leads, activeTab, minScore]);
+
+    result = [...result].sort((a, b) => {
+      switch (sortBy) {
+        case "score_asc":
+          return a.intent_score - b.intent_score;
+        case "date_desc":
+          return getLeadTimestamp(b) - getLeadTimestamp(a);
+        case "date_asc":
+          return getLeadTimestamp(a) - getLeadTimestamp(b);
+        default:
+          return b.intent_score - a.intent_score;
+      }
+    });
+
+    return result;
+  }, [realLeads, activeTab, minScore, platformFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
+  const paginatedLeads = filteredLeads.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, platformFilter, sortBy, minScore]);
 
   async function handleScan() {
     setScanning(true);
+    setToast({ message: "Scan en cours sur Reddit… cela peut prendre 15-30 secondes", type: "info" });
+
+    const countBefore = realLeads.length;
+
     try {
       const res = await fetch("/api/scan-reddit", { method: "POST" });
       const result = await res.json();
-      console.log("Scan result:", result);
+
+      if (!res.ok) {
+        setToast({
+          message: result.error || "Erreur lors du scan Reddit",
+          type: "error",
+        });
+        return;
+      }
 
       const {
         data: { user },
@@ -90,9 +191,20 @@ export default function DashboardPage() {
         .eq("user_id", user.id)
         .order("intent_score", { ascending: false });
 
-      setLeads(data || []);
+      const newLeads = filterRealLeads((data as Lead[]) ?? []);
+      setLeads(data ?? []);
+
+      const inserted = result.leads_inserted ?? newLeads.length - countBefore;
+      if (inserted > 0) {
+        setToast({ message: `${inserted} nouveaux leads trouvés !`, type: "success" });
+      } else {
+        setToast({ message: "Aucun nouveau lead cette fois", type: "info" });
+      }
     } catch (e) {
-      alert("Erreur scan: " + (e instanceof Error ? e.message : String(e)));
+      setToast({
+        message: "Erreur scan: " + (e instanceof Error ? e.message : String(e)),
+        type: "error",
+      });
     } finally {
       setScanning(false);
     }
@@ -108,6 +220,8 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (res.ok && data.response) {
+        const lead = realLeads.find((l) => l.id === leadId);
+        setModalLeadTitle(lead?.post_title ?? lead?.title ?? "Lead");
         setModalResponse(data.response);
         setModalLeadId(leadId);
       }
@@ -122,12 +236,7 @@ export default function DashboardPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase
-      .from("leads")
-      .update({ status: "ignored" })
-      .eq("id", leadId)
-      .eq("user_id", user.id);
-
+    await supabase.from("leads").update({ status: "ignored" }).eq("id", leadId).eq("user_id", user.id);
     setLeads((prev) =>
       prev.map((l) => (l.id === leadId ? { ...l, status: "ignored" as const } : l))
     );
@@ -139,31 +248,92 @@ export default function DashboardPage() {
     } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase
-      .from("leads")
-      .update({ status: "responded" })
-      .eq("id", leadId)
-      .eq("user_id", user.id);
-
+    await supabase.from("leads").update({ status: "responded" }).eq("id", leadId).eq("user_id", user.id);
     setLeads((prev) =>
       prev.map((l) => (l.id === leadId ? { ...l, status: "responded" as const } : l))
     );
   }
 
+  function renderEmptyState() {
+    return (
+      <div
+        style={{
+          ...cardBase,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "64px 24px",
+          textAlign: "center",
+        }}
+      >
+        <span style={{ fontSize: "48px", lineHeight: 1 }}>🎯</span>
+        <p style={{ marginTop: "20px", marginBottom: 0, fontSize: "18px", fontWeight: 700, color: colors.text }}>
+          Aucun lead pour l&apos;instant
+        </p>
+        <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "14px", color: colors.textMuted, maxWidth: "360px" }}>
+          Lance un premier scan Reddit pour trouver tes prospects
+        </p>
+        <button
+          type="button"
+          onClick={handleScan}
+          disabled={scanning}
+          style={{
+            ...primaryButton(scanHover, scanning),
+            marginTop: "24px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "12px 24px",
+            fontSize: "14px",
+            fontWeight: 600,
+            fontFamily,
+          }}
+        >
+          {scanning ? (
+            <>
+              <span
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  borderTopColor: "#fff",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+              Scan en cours…
+            </>
+          ) : (
+            "Scanner maintenant"
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  const statCards = [
+    { key: "total", label: "Total leads", value: stats.total, icon: "📊", trend: [stats.thisWeek, stats.lastWeek] as const },
+    { key: "new", label: "Leads nouveaux", value: stats.new, icon: "🆕", trend: null },
+    { key: "responded", label: "Répondus", value: stats.responded, icon: "✅", trend: [stats.respondedThisWeek, stats.respondedLastWeek] as const },
+    { key: "rate", label: "Taux de réponse", value: `${stats.responseRate}%`, icon: "📈", trend: null },
+  ];
+
   return (
     <div style={{ fontFamily }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
       <header
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
           marginBottom: "32px",
+          flexWrap: "wrap",
+          gap: "16px",
         }}
       >
         <div>
-          <h1 style={{ fontSize: "28px", fontWeight: 700, color: colors.text, margin: 0 }}>
-            Tes leads
-          </h1>
+          <h1 style={{ fontSize: "28px", fontWeight: 700, color: colors.text, margin: 0 }}>Tes leads</h1>
           <p style={{ marginTop: "6px", marginBottom: 0, fontSize: "14px", color: colors.textMuted }}>
             Scanne Reddit pour trouver tes prospects
           </p>
@@ -183,22 +353,54 @@ export default function DashboardPage() {
             fontSize: "14px",
             fontWeight: 600,
             fontFamily,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
           }}
         >
-          🔍 {scanning ? "Scanning..." : "Scanner Reddit"}
+          {scanning ? (
+            <>
+              <span
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  borderTopColor: "#fff",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+              Scan en cours…
+            </>
+          ) : (
+            <>🔍 Scanner Reddit</>
+          )}
         </button>
       </header>
+
+      {scanning && (
+        <div
+          style={{
+            marginBottom: "20px",
+            padding: "12px 16px",
+            background: colors.card,
+            border: `1px solid ${colors.accent}`,
+            borderRadius: "8px",
+            fontSize: "13px",
+            color: colors.accent,
+            fontWeight: 500,
+          }}
+        >
+          Scan en cours sur Reddit… cela peut prendre 15-30 secondes
+        </div>
+      )}
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
           gap: "16px",
           marginBottom: "32px",
         }}
       >
-        {STATS.map((stat) => (
+        {statCards.map((stat) => (
           <div
             key={stat.key}
             style={{
@@ -210,170 +412,271 @@ export default function DashboardPage() {
             }}
           >
             <div>
-              <p style={{ margin: 0, fontSize: "32px", fontWeight: 700, color: colors.text, lineHeight: 1 }}>
-                {stats[stat.key]}
+              <p style={{ margin: 0, fontSize: "28px", fontWeight: 700, color: colors.text, lineHeight: 1 }}>
+                {stat.value}
               </p>
-              <p style={{ margin: "6px 0 0", fontSize: "13px", color: colors.textMuted }}>
-                {stat.label}
-              </p>
+              <p style={{ margin: "6px 0 0", fontSize: "13px", color: colors.textMuted }}>{stat.label}</p>
+              {stat.trend && (
+                <p style={{ margin: "4px 0 0", fontSize: "12px" }}>
+                  <TrendBadge current={stat.trend[0]} previous={stat.trend[1]} />
+                </p>
+              )}
             </div>
-            <span style={{ fontSize: "28px" }}>{stat.icon}</span>
+            <span style={{ fontSize: "24px" }}>{stat.icon}</span>
           </div>
         ))}
       </div>
 
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                borderRadius: "20px",
+                padding: "8px 18px",
+                fontSize: "13px",
+                fontWeight: 500,
+                cursor: "pointer",
+                background: isActive ? colors.accent : "transparent",
+                color: isActive ? "#ffffff" : colors.textMuted,
+                border: isActive ? "none" : `1px solid ${colors.border}`,
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
       <div
         style={{
-          marginTop: "28px",
           display: "flex",
           flexWrap: "wrap",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: "16px",
+          gap: "12px",
+          marginBottom: "16px",
         }}
       >
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-          {TABS.map((tab) => {
-            const isActive = activeTab === tab.key;
+          {PLATFORM_FILTERS.map((pf) => {
+            const active = platformFilter === pf.key;
             return (
               <button
-                key={tab.key}
+                key={pf.key}
                 type="button"
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => setPlatformFilter(pf.key)}
                 style={{
                   borderRadius: "20px",
-                  padding: "8px 18px",
-                  fontSize: "13px",
-                  fontWeight: 500,
+                  padding: "6px 14px",
+                  fontSize: "12px",
+                  fontWeight: 600,
                   cursor: "pointer",
-                  background: isActive ? colors.accent : "transparent",
-                  color: isActive ? "#ffffff" : colors.textMuted,
-                  border: isActive ? "none" : `1px solid ${colors.border}`,
-                  transition: "background 150ms ease, color 150ms ease",
+                  background: active ? pf.color : "transparent",
+                  color: active ? "#FFFFFF" : pf.color,
+                  border: `1.5px solid ${pf.color}`,
                 }}
               >
-                {tab.label}
+                {pf.label}
               </button>
             );
           })}
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "12px",
-            background: colors.card,
-            border: `1px solid ${colors.border}`,
-            borderRadius: "10px",
-            padding: "8px 16px",
-          }}
-        >
-          <label htmlFor="min-score" style={{ fontSize: "13px", fontWeight: 500, color: colors.textMuted }}>
-            Score minimum
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <label style={{ fontSize: "13px", color: colors.textMuted, display: "flex", alignItems: "center", gap: "8px" }}>
+            Trier par
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border: `1px solid ${colors.border}`,
+                fontSize: "13px",
+                fontFamily,
+                color: colors.text,
+                background: colors.card,
+              }}
+            >
+              <option value="score_desc">Score décroissant</option>
+              <option value="score_asc">Score croissant</option>
+              <option value="date_desc">Date récente</option>
+              <option value="date_asc">Date ancienne</option>
+            </select>
           </label>
-          <input
-            id="min-score"
-            type="range"
-            min={0}
-            max={100}
-            value={minScore}
-            onChange={(e) => setMinScore(Number(e.target.value))}
-            style={{ width: "120px", accentColor: colors.accent }}
-          />
-          <span
+
+          <div
             style={{
-              minWidth: "28px",
-              fontSize: "13px",
-              fontWeight: 700,
-              color: colors.text,
-              textAlign: "right",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              background: colors.card,
+              border: `1px solid ${colors.border}`,
+              borderRadius: "10px",
+              padding: "6px 12px",
             }}
           >
-            {minScore}
-          </span>
+            <label htmlFor="min-score" style={{ fontSize: "13px", color: colors.textMuted }}>
+              Score min
+            </label>
+            <input
+              id="min-score"
+              type="range"
+              min={0}
+              max={100}
+              value={minScore}
+              onChange={(e) => setMinScore(Number(e.target.value))}
+              style={{ width: "80px", accentColor: colors.accent }}
+            />
+            <span style={{ fontSize: "13px", fontWeight: 700, color: colors.text }}>{minScore}</span>
+          </div>
         </div>
       </div>
 
-      <div style={{ marginTop: "24px" }}>
+      <div style={{ marginTop: "8px" }}>
         {loading ? (
-          <p style={{ textAlign: "center", color: colors.textMuted, padding: "48px 0" }}>
-            Chargement…
-          </p>
-        ) : leads.length === 0 ? (
-          <div
-            style={{
-              ...cardBase,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              padding: "64px 24px",
-              textAlign: "center",
-            }}
-          >
-            <span style={{ fontSize: "48px", lineHeight: 1 }}>🎯</span>
-            <p style={{ marginTop: "20px", marginBottom: 0, fontSize: "18px", fontWeight: 700, color: colors.text }}>
-              Lance ton premier scan
+          <>
+            {[1, 2, 3].map((i) => (
+              <LeadSkeleton key={i} />
+            ))}
+          </>
+        ) : fetchError ? (
+          <div style={{ ...cardBase, padding: "48px 24px", textAlign: "center" }}>
+            <p style={{ margin: "0 0 8px", fontSize: "16px", fontWeight: 600, color: "#DC2626" }}>
+              Impossible de charger les leads
             </p>
-            <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "14px", color: colors.textMuted, maxWidth: "360px" }}>
-              Scanne Reddit pour détecter les prospects qui cherchent activement une solution comme la tienne.
-            </p>
+            <p style={{ margin: "0 0 20px", fontSize: "14px", color: colors.textMuted }}>{fetchError}</p>
             <button
               type="button"
-              onClick={handleScan}
-              disabled={scanning}
-              onMouseEnter={() => setScanHover(true)}
-              onMouseLeave={() => setScanHover(false)}
+              onClick={fetchLeads}
               style={{
-                ...primaryButton(scanHover, scanning),
-                marginTop: "24px",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "12px 24px",
+                ...primaryButton(false, false),
+                padding: "10px 24px",
                 fontSize: "14px",
                 fontWeight: 600,
                 fontFamily,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
               }}
             >
-              🔍 {scanning ? "Scanning..." : "Scanner Reddit"}
+              Réessayer
             </button>
           </div>
+        ) : realLeads.length === 0 ? (
+          renderEmptyState()
         ) : filteredLeads.length === 0 ? (
-          <div
-            style={{
-              ...cardBase,
-              padding: "48px 24px",
-              textAlign: "center",
-            }}
-          >
+          <div style={{ ...cardBase, padding: "48px 24px", textAlign: "center" }}>
             <p style={{ margin: 0, fontSize: "14px", color: colors.textMuted }}>
               Aucun lead ne correspond à ces filtres.
             </p>
           </div>
         ) : (
-          filteredLeads.map((lead) => (
-            <LeadCard
-              key={lead.id}
-              lead={lead}
-              onGenerate={handleGenerate}
-              onIgnore={handleIgnore}
-              generating={generatingId === lead.id}
-            />
-          ))
+          <>
+            {paginatedLeads.map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                onGenerate={handleGenerate}
+                onIgnore={handleIgnore}
+                generating={generatingId === lead.id}
+              />
+            ))}
+
+            {filteredLeads.length > PAGE_SIZE && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  marginTop: "24px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    border: `1px solid ${colors.border}`,
+                    background: colors.card,
+                    cursor: page <= 1 ? "not-allowed" : "pointer",
+                    opacity: page <= 1 ? 0.5 : 1,
+                    fontSize: "13px",
+                    fontFamily,
+                  }}
+                >
+                  Précédent
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPage(p)}
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
+                      border: p === page ? "none" : `1px solid ${colors.border}`,
+                      background: p === page ? colors.accent : colors.card,
+                      color: p === page ? "#fff" : colors.text,
+                      cursor: "pointer",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      fontFamily,
+                    }}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: "8px",
+                    border: `1px solid ${colors.border}`,
+                    background: colors.card,
+                    cursor: page >= totalPages ? "not-allowed" : "pointer",
+                    opacity: page >= totalPages ? 0.5 : 1,
+                    fontSize: "13px",
+                    fontFamily,
+                  }}
+                >
+                  Suivant
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {modalResponse && modalLeadId && (
         <ResponseModal
           response={modalResponse}
+          leadTitle={modalLeadTitle}
           leadId={modalLeadId}
           onClose={() => {
             setModalResponse(null);
             setModalLeadId(null);
+            setModalLeadTitle("");
           }}
           onMarkResponded={handleMarkResponded}
+        />
+      )}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+          duration={toast.type === "info" && scanning ? 30000 : 4000}
         />
       )}
     </div>

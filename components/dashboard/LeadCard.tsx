@@ -1,9 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { formatRelativeTime } from "@/lib/format-relative";
+import { formatLeadRelative } from "@/lib/format-relative";
 import { colors, fontFamily, intentColor, primaryButton } from "@/lib/dashboard-styles";
 import type { Lead } from "@/lib/types";
+
+const PLATFORM_STYLES: Record<string, { label: string; bg: string }> = {
+  reddit: { label: "Reddit", bg: colors.reddit },
+  x: { label: "X", bg: "#2B2B2B" },
+  linkedin: { label: "LinkedIn", bg: "#0A66C2" },
+};
 
 type LeadCardProps = {
   lead: Lead;
@@ -25,11 +31,19 @@ export default function LeadCard({
   const scoreColor = intentColor(lead.intent_score);
   const displayTitle = lead.post_title ?? lead.title ?? "";
   const displayAuthor = lead.author ?? lead.username;
+  const platform = (lead.platform ?? "reddit").toLowerCase();
+  const platformStyle = PLATFORM_STYLES[platform] ?? PLATFORM_STYLES.reddit;
+
+  const bodyExcerpt = lead.post_body
+    ? lead.post_body.length > 160
+      ? lead.post_body.slice(0, 160).trim() + "…"
+      : lead.post_body
+    : null;
 
   const meta = [
     lead.subreddit ? `r/${lead.subreddit}` : null,
     displayAuthor ? `u/${displayAuthor}` : null,
-    formatRelativeTime(lead.post_created_at),
+    formatLeadRelative(lead),
   ]
     .filter(Boolean)
     .join(" · ");
@@ -48,12 +62,19 @@ export default function LeadCard({
         transition: "border-color 150ms ease",
       }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "20px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "20px",
+        }}
+      >
         <div style={{ flex: 1, minWidth: 0 }}>
           <span
             style={{
               display: "inline-block",
-              backgroundColor: colors.reddit,
+              backgroundColor: platformStyle.bg,
               color: "#ffffff",
               borderRadius: "999px",
               padding: "4px 12px",
@@ -61,7 +82,7 @@ export default function LeadCard({
               fontWeight: 600,
             }}
           >
-            Reddit
+            {platformStyle.label}
           </span>
 
           <h3
@@ -72,18 +93,49 @@ export default function LeadCard({
               fontWeight: 700,
               color: colors.text,
               lineHeight: 1.4,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
             }}
           >
             {displayTitle}
           </h3>
 
+          {bodyExcerpt && (
+            <p
+              style={{
+                margin: "8px 0 0",
+                fontSize: "13px",
+                lineHeight: 1.55,
+                color: colors.textMuted,
+                display: "-webkit-box",
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {bodyExcerpt}
+            </p>
+          )}
+
           <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "13px", color: colors.textMuted }}>
             {meta}
           </p>
+
+          {lead.post_url && (
+            <a
+              href={lead.post_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-block",
+                marginTop: "10px",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: colors.accent,
+                textDecoration: "none",
+              }}
+            >
+              Voir le post →
+            </a>
+          )}
         </div>
 
         <div
@@ -102,13 +154,21 @@ export default function LeadCard({
           <span style={{ fontSize: "18px", fontWeight: 700, lineHeight: 1, color: scoreColor }}>
             {lead.intent_score}
           </span>
-          <span style={{ marginTop: "2px", fontSize: "9px", fontWeight: 600, color: colors.textMuted, letterSpacing: "0.02em" }}>
+          <span
+            style={{
+              marginTop: "2px",
+              fontSize: "9px",
+              fontWeight: 600,
+              color: colors.textMuted,
+              letterSpacing: "0.02em",
+            }}
+          >
             Intent
           </span>
         </div>
       </div>
 
-      <div style={{ marginTop: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ marginTop: "16px", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
         <button
           type="button"
           onClick={() => onGenerate(lead.id)}

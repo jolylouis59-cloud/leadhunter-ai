@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
+import { PLAN_BADGE_STYLES } from "@/lib/plan-limits";
 import { colors, fontFamily, getInitials } from "@/lib/dashboard-styles";
 
 const navItems = [
@@ -11,31 +12,37 @@ const navItems = [
   { label: "Paramètres", href: "/dashboard/settings", icon: "⚙️" },
 ];
 
-function LogoutIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+type SidebarProps = {
+  isMobile?: boolean;
+  open?: boolean;
+  onClose?: () => void;
+};
 
-export default function Sidebar() {
+export default function Sidebar({ isMobile = false, open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
+  const [plan, setPlan] = useState("free");
   const [hoveredNav, setHoveredNav] = useState<string | null>(null);
   const [logoutHover, setLogoutHover] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setEmail(data.user?.email ?? null);
-    });
+    async function load() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      setEmail(user?.email ?? null);
+
+      if (user) {
+        const { data } = await supabase
+          .from("user_configs")
+          .select("plan")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (data?.plan) setPlan(data.plan);
+      }
+    }
+    load();
   }, []);
 
   async function handleLogout() {
@@ -43,6 +50,10 @@ export default function Sidebar() {
     router.push("/login");
     router.refresh();
   }
+
+  const planBadge = PLAN_BADGE_STYLES[plan] ?? PLAN_BADGE_STYLES.free;
+
+  const hiddenOnMobile = isMobile && !open;
 
   return (
     <aside
@@ -52,13 +63,15 @@ export default function Sidebar() {
         background: colors.sidebar,
         minHeight: "100vh",
         position: "fixed",
-        left: 0,
+        left: hiddenOnMobile ? "-280px" : 0,
         top: 0,
-        zIndex: 10,
+        zIndex: 20,
         display: "flex",
         flexDirection: "column",
         padding: "24px 16px",
         fontFamily,
+        transition: "left 250ms ease",
+        boxShadow: isMobile && open ? "4px 0 20px rgba(0,0,0,0.2)" : "none",
       }}
     >
       <div
@@ -79,34 +92,10 @@ export default function Sidebar() {
           style={{ borderRadius: "8px", flexShrink: 0, background: "transparent" }}
         />
         <div style={{ display: "flex", alignItems: "baseline", gap: "4px" }}>
-          <span style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff" }}>
-            LeadHunter
-          </span>
-          <span
-            style={{
-              fontSize: "16px",
-              fontWeight: 700,
-              color: colors.accent,
-            }}
-          >
-            AI
-          </span>
+          <span style={{ fontSize: "16px", fontWeight: 700, color: "#ffffff" }}>LeadHunter</span>
+          <span style={{ fontSize: "16px", fontWeight: 700, color: colors.accent }}>AI</span>
         </div>
       </div>
-
-      <p
-        style={{
-          fontSize: "10px",
-          fontWeight: 600,
-          letterSpacing: "0.08em",
-          color: colors.navInactive,
-          textTransform: "uppercase",
-          padding: "0 12px",
-          marginBottom: "8px",
-        }}
-      >
-        Menu
-      </p>
 
       <nav style={{ flex: 1 }}>
         {navItems.map((item) => {
@@ -116,6 +105,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              onClick={onClose}
               onMouseEnter={() => setHoveredNav(item.href)}
               onMouseLeave={() => setHoveredNav(null)}
               style={{
@@ -130,7 +120,7 @@ export default function Sidebar() {
                 textDecoration: "none",
                 color: active ? "#ffffff" : colors.navInactive,
                 background: active ? colors.accent : hovered ? colors.navHover : "transparent",
-                transition: "background 150ms ease, color 150ms ease",
+                transition: "background 150ms ease",
               }}
             >
               <span style={{ fontSize: "16px", lineHeight: 1 }}>{item.icon}</span>
@@ -140,51 +130,56 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div
-        style={{
-          borderTop: "1px solid #3a3a3a",
-          paddingTop: "16px",
-        }}
-      >
+      <div style={{ borderTop: "1px solid #3a3a3a", paddingTop: "16px" }}>
         {email && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              marginBottom: "12px",
-              padding: "0 4px",
-            }}
-          >
-            <div
-              style={{
-                width: "36px",
-                height: "36px",
-                borderRadius: "50%",
-                background: colors.accent,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "13px",
-                fontWeight: 700,
-                color: "#ffffff",
-                flexShrink: 0,
-              }}
-            >
-              {getInitials(email)}
+          <div style={{ marginBottom: "12px", padding: "0 4px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+              <div
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "50%",
+                  background: colors.accent,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  flexShrink: 0,
+                }}
+              >
+                {getInitials(email)}
+              </div>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "13px",
+                  color: colors.navInactive,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {email}
+              </p>
             </div>
-            <p
+            <Link
+              href="/dashboard/settings?tab=billing"
+              onClick={onClose}
               style={{
-                margin: 0,
-                fontSize: "13px",
-                color: colors.navInactive,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                display: "inline-block",
+                padding: "4px 10px",
+                borderRadius: "12px",
+                fontSize: "11px",
+                fontWeight: 700,
+                background: planBadge.bg,
+                color: planBadge.color,
+                textDecoration: "none",
               }}
             >
-              {email}
-            </p>
+              {planBadge.label}
+            </Link>
           </div>
         )}
         <button
@@ -194,10 +189,6 @@ export default function Sidebar() {
           onMouseLeave={() => setLogoutHover(false)}
           style={{
             width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
             padding: "10px 12px",
             borderRadius: "8px",
             border: "1px solid #3a3a3a",
@@ -207,10 +198,8 @@ export default function Sidebar() {
             fontWeight: 500,
             cursor: "pointer",
             fontFamily,
-            transition: "background 150ms ease, color 150ms ease",
           }}
         >
-          <LogoutIcon />
           Se déconnecter
         </button>
       </div>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
+import { getKeywordLimit } from "@/lib/plan-limits";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -164,13 +165,38 @@ function Toast({
 }
 
 export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          style={{
+            fontFamily,
+            color: colors.textMuted,
+            padding: "48px 16px",
+            textAlign: "center",
+          }}
+        >
+          Chargement…
+        </div>
+      }
+    >
+      <SettingsContent />
+    </Suspense>
+  );
+}
+
+function SettingsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isMobile, setIsMobile] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>("scanner");
+  const [activeTab, setActiveTab] = useState<TabId>(
+    (searchParams.get("tab") as TabId) || "scanner"
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveHover, setSaveHover] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [keywordError, setKeywordError] = useState<string | null>(null);
 
   const [productDesc, setProductDesc] = useState("");
   const [target, setTarget] = useState("");
@@ -178,17 +204,28 @@ export default function SettingsPage() {
   const [subreddits, setSubreddits] = useState<string[]>(DEFAULT_SUBREDDITS);
   const [keywordInput, setKeywordInput] = useState("");
   const [subredditInput, setSubredditInput] = useState("");
+  const [initialSnapshot, setInitialSnapshot] = useState("");
 
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [slackAlerts, setSlackAlerts] = useState(false);
   const [autoScan, setAutoScan] = useState(false);
   const [weeklyDigest, setWeeklyDigest] = useState(true);
+  const [alertEmail, setAlertEmail] = useState("");
+  const [slackWebhook, setSlackWebhook] = useState("");
+  const [autoScanHour, setAutoScanHour] = useState(8);
+  const [slackTesting, setSlackTesting] = useState(false);
 
   const [userEmail, setUserEmail] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState("free");
   const [leadsLimit, setLeadsLimit] = useState(0);
+  const [stripeCustomerId, setStripeCustomerId] = useState<string | null>(null);
+  const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
+  const [billingName, setBillingName] = useState("");
+  const [billingAddress, setBillingAddress] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -213,19 +250,67 @@ export default function SettingsPage() {
 
       const { data, error } = await supabase
         .from("user_configs")
-        .select(
-          "product_description, target, keywords, subreddits, plan, leads_limit"
-        )
+        .select("*")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (!error && data) {
-        if (data.product_description) setProductDesc(data.product_description);
-        if (data.target) setTarget(data.target);
-        if (data.keywords?.length) setKeywords(data.keywords);
-        if (data.subreddits?.length) setSubreddits(data.subreddits);
+        const pd = data.product_description ?? "";
+        const tg = data.target ?? "";
+        const kw = data.keywords?.length ? data.keywords : DEFAULT_KEYWORDS;
+        const sr = data.subreddits?.length ? data.subreddits : DEFAULT_SUBREDDITS;
+
+        setProductDesc(pd);
+        setTarget(tg);
+        setKeywords(kw);
+        setSubreddits(sr);
         if (data.plan) setCurrentPlan(data.plan);
         if (typeof data.leads_limit === "number") setLeadsLimit(data.leads_limit);
+        if (data.stripe_customer_id) setStripeCustomerId(data.stripe_customer_id);
+        if (data.trial_ends_at) setTrialEndsAt(data.trial_ends_at);
+        if (data.billing_name) setBillingName(data.billing_name);
+        if (data.billing_address) setBillingAddress(data.billing_address);
+        if (data.alert_email) setAlertEmail(data.alert_email);
+        else setAlertEmail(user.email ?? "");
+        if (data.slack_webhook_url) setSlackWebhook(data.slack_webhook_url);
+        if (typeof data.email_alerts === "boolean") setEmailAlerts(data.email_alerts);
+        if (typeof data.slack_alerts === "boolean") setSlackAlerts(data.slack_alerts);
+        if (typeof data.auto_scan === "boolean") setAutoScan(data.auto_scan);
+        if (typeof data.weekly_digest === "boolean") setWeeklyDigest(data.weekly_digest);
+        if (typeof data.auto_scan_hour === "number") setAutoScanHour(data.auto_scan_hour);
+
+        setInitialSnapshot(
+          JSON.stringify({
+            productDesc: pd,
+            target: tg,
+            keywords: kw,
+            subreddits: sr,
+            emailAlerts: data.email_alerts ?? true,
+            slackAlerts: data.slack_alerts ?? false,
+            autoScan: data.auto_scan ?? false,
+            weeklyDigest: data.weekly_digest ?? true,
+            alertEmail: data.alert_email ?? user.email,
+            slackWebhook: data.slack_webhook_url ?? "",
+            autoScanHour: data.auto_scan_hour ?? 8,
+          })
+        );
+      } else {
+        setAlertEmail(user.email ?? "");
+        setInitialSnapshot(
+          JSON.stringify({
+            productDesc: "",
+            target: "",
+            keywords: DEFAULT_KEYWORDS,
+            subreddits: DEFAULT_SUBREDDITS,
+            emailAlerts: true,
+            slackAlerts: false,
+            autoScan: false,
+            weeklyDigest: true,
+            alertEmail: user.email,
+            slackWebhook: "",
+            autoScanHour: 8,
+          })
+        );
       }
 
       setLoading(false);
@@ -269,9 +354,61 @@ export default function SettingsPage() {
   const btnWidth = isMobile ? "100%" : "auto";
   const btnMinWidth = isMobile ? "unset" : "160px";
 
+  const keywordLimit = getKeywordLimit(currentPlan);
+
+  const isDirty = useMemo(() => {
+    if (!initialSnapshot) return false;
+    const current = JSON.stringify({
+      productDesc,
+      target,
+      keywords,
+      subreddits,
+      emailAlerts,
+      slackAlerts,
+      autoScan,
+      weeklyDigest,
+      alertEmail,
+      slackWebhook,
+      autoScanHour,
+    });
+    return current !== initialSnapshot;
+  }, [
+    initialSnapshot,
+    productDesc,
+    target,
+    keywords,
+    subreddits,
+    emailAlerts,
+    slackAlerts,
+    autoScan,
+    weeklyDigest,
+    alertEmail,
+    slackWebhook,
+    autoScanHour,
+  ]);
+
+  const trialDaysLeft = useMemo(() => {
+    if (!trialEndsAt) return null;
+    const diff = new Date(trialEndsAt).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  }, [trialEndsAt]);
+
   function addKeyword() {
     const value = keywordInput.trim();
-    if (!value || keywords.includes(value)) return;
+    setKeywordError(null);
+
+    if (!value) {
+      setKeywordError("Le mot-clé ne peut pas être vide.");
+      return;
+    }
+    if (keywords.includes(value)) {
+      setKeywordError("Ce mot-clé existe déjà");
+      return;
+    }
+    if (keywords.length >= keywordLimit) {
+      setKeywordError("Limite de mots-clés atteinte pour votre plan.");
+      return;
+    }
     setKeywords((prev) => [...prev, value]);
     setKeywordInput("");
   }
@@ -284,18 +421,24 @@ export default function SettingsPage() {
   }
 
   async function handleSave() {
-    console.log("handleSave called");
     setSaving(true);
 
-    const userId = (await supabase.auth.getUser()).data.user?.id;
+    const uid = (await supabase.auth.getUser()).data.user?.id;
 
     const { error } = await supabase.from("user_configs").upsert(
       {
-        user_id: userId,
+        user_id: uid,
         product_description: productDesc,
         target: target,
         keywords: keywords,
         subreddits: subreddits,
+        email_alerts: emailAlerts,
+        slack_alerts: slackAlerts,
+        auto_scan: autoScan,
+        weekly_digest: weeklyDigest,
+        alert_email: alertEmail,
+        slack_webhook_url: slackWebhook || null,
+        auto_scan_hour: autoScanHour,
       },
       { onConflict: "user_id" }
     );
@@ -303,10 +446,24 @@ export default function SettingsPage() {
     setSaving(false);
 
     if (error) {
-      console.error("Erreur save:", error);
       setToast("Erreur : " + error.message);
     } else {
-      setToast("✅ Config sauvegardée !");
+      setToast("Paramètres sauvegardés ✓");
+      setInitialSnapshot(
+        JSON.stringify({
+          productDesc,
+          target,
+          keywords,
+          subreddits,
+          emailAlerts,
+          slackAlerts,
+          autoScan,
+          weeklyDigest,
+          alertEmail,
+          slackWebhook,
+          autoScanHour,
+        })
+      );
     }
   }
 
@@ -317,10 +474,10 @@ export default function SettingsPage() {
   }
 
   async function handleSelectPlan(priceId: string, planKey: string) {
-    console.log("click plan", priceId);
-
     if (!priceId) {
-      setToast("Price ID Stripe non configuré pour ce plan.");
+      setToast(
+        "Paiement bientôt disponible — contacte-nous à contact@leadhunterai.fr"
+      );
       return;
     }
 
@@ -614,6 +771,66 @@ export default function SettingsPage() {
             {renderBadges(keywords, (item) =>
               setKeywords((prev) => prev.filter((k) => k !== item))
             )}
+            <div style={{ marginTop: "12px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "12px",
+                  color: colors.textMuted,
+                  marginBottom: "6px",
+                }}
+              >
+                <span>
+                  {keywords.length} / {keywordLimit} mots-clés
+                </span>
+              </div>
+              <div
+                style={{
+                  height: "6px",
+                  background: colors.border,
+                  borderRadius: "3px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${Math.min(100, (keywords.length / keywordLimit) * 100)}%`,
+                    background:
+                      keywords.length >= keywordLimit ? "#DC2626" : colors.accent,
+                    borderRadius: "3px",
+                  }}
+                />
+              </div>
+              {keywordError && (
+                <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#DC2626" }}>
+                  {keywordError}
+                </p>
+              )}
+              {keywords.length >= keywordLimit && currentPlan === "starter" && (
+                <p style={{ margin: "8px 0 0", fontSize: "13px", color: colors.textMuted }}>
+                  Limite atteinte —{" "}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("billing")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: colors.accent,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      padding: 0,
+                      fontFamily,
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Passe au plan Growth
+                  </button>{" "}
+                  pour ajouter plus de mots-clés
+                </p>
+              )}
+            </div>
           </div>
 
           <div>
@@ -660,19 +877,34 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !isDirty}
             onMouseEnter={() => setSaveHover(true)}
             onMouseLeave={() => setSaveHover(false)}
             style={{
-              ...primaryButton(saveHover, saving),
+              ...primaryButton(saveHover, saving || !isDirty),
               width: btnWidth,
               minWidth: btnMinWidth,
               padding: "12px 28px",
               fontSize: "14px",
               fontWeight: 600,
               fontFamily,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
             }}
           >
+            {saving && (
+              <span
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  borderTopColor: "#fff",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+            )}
             {saving ? "Sauvegarde…" : "Sauvegarder"}
           </button>
         </div>
@@ -681,18 +913,33 @@ export default function SettingsPage() {
       {/* ── TAB: Abonnement ── */}
       {activeTab === "billing" && (
         <div>
-          <p style={{ margin: "0 0 16px", fontSize: "14px", color: colors.textMuted }}>
-            Plan actuel :{" "}
-            <strong style={{ color: colors.text }}>
-              {PLAN_LABELS[currentPlan] ?? currentPlan}
-            </strong>
-            {leadsLimit > 0 && (
-              <span>
-                {" "}
-                — {leadsLimit >= 999999 ? "leads illimités" : `${leadsLimit} leads/mois`}
-              </span>
+          <div
+            style={{
+              ...cardBase,
+              padding: "16px 20px",
+              marginBottom: "20px",
+              border: `1px solid ${colors.accent}`,
+              background: "rgba(31,77,58,0.05)",
+            }}
+          >
+            <p style={{ margin: 0, fontSize: "14px", color: colors.text }}>
+              Plan actuel :{" "}
+              <strong>{PLAN_LABELS[currentPlan] ?? currentPlan}</strong>
+              {leadsLimit > 0 && (
+                <span>
+                  {" "}
+                  — {leadsLimit >= 999999 ? "leads illimités" : `${leadsLimit} leads/mois`}
+                </span>
+              )}
+            </p>
+            {currentPlan === "free" && (
+              <p style={{ margin: "8px 0 0", fontSize: "13px", color: colors.textMuted }}>
+                {trialEndsAt
+                  ? `Votre essai gratuit se termine le ${new Date(trialEndsAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}${trialDaysLeft !== null ? ` (${trialDaysLeft} jour${trialDaysLeft > 1 ? "s" : ""} restant${trialDaysLeft > 1 ? "s" : ""})` : ""}`
+                  : "7 jours d'essai inclus"}
+              </p>
             )}
-          </p>
+          </div>
           <div
             style={
               isMobile
@@ -704,20 +951,44 @@ export default function SettingsPage() {
                   }
             }
           >
-            {PLANS.map((plan) => (
+            {PLANS.map((plan) => {
+              const isCurrent = currentPlan === plan.key;
+              return (
               <div
                 key={plan.name}
                 style={{
                   ...cardBase,
                   padding: cardPadding,
                   position: "relative",
-                  border: plan.popular
+                  border: isCurrent
                     ? `2px solid ${colors.accent}`
-                    : `1px solid ${colors.border}`,
+                    : plan.popular
+                      ? `2px solid ${colors.accent}`
+                      : `1px solid ${colors.border}`,
                   boxShadow: plan.popular ? "0 4px 20px rgba(31,77,58,0.12)" : "none",
+                  opacity: isCurrent ? 1 : 1,
                 }}
               >
-                {plan.popular && (
+                {isCurrent && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "-10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: colors.accent,
+                      color: "#FFFFFF",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      padding: "3px 10px",
+                      borderRadius: "20px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Votre plan actuel
+                  </span>
+                )}
+                {!isCurrent && plan.popular && (
                   <span
                     style={{
                       position: "absolute",
@@ -765,28 +1036,37 @@ export default function SettingsPage() {
                 </ul>
                 <button
                   type="button"
-                  onClick={() => handleSelectPlan(plan.priceId, plan.key)}
-                  disabled={checkoutLoading === plan.key}
+                  onClick={() => !isCurrent && handleSelectPlan(plan.priceId, plan.key)}
+                  disabled={isCurrent || checkoutLoading === plan.key}
                   style={{
-                    ...(plan.popular ? primaryButton(false, false) : {}),
+                    ...(plan.popular && !isCurrent ? primaryButton(false, false) : {}),
                     marginTop: "20px",
                     width: "100%",
                     padding: "10px 16px",
                     fontSize: "13px",
                     fontWeight: 600,
                     borderRadius: "8px",
-                    cursor: checkoutLoading === plan.key ? "wait" : "pointer",
+                    cursor: isCurrent ? "default" : checkoutLoading === plan.key ? "wait" : "pointer",
                     fontFamily,
-                    opacity: checkoutLoading !== null && checkoutLoading !== plan.key ? 0.6 : 1,
-                    background: plan.popular ? colors.accent : "transparent",
-                    color: plan.popular ? "#FFFFFF" : colors.accent,
-                    border: plan.popular ? "none" : `1.5px solid ${colors.accent}`,
+                    opacity: isCurrent ? 0.6 : checkoutLoading !== null && checkoutLoading !== plan.key ? 0.6 : 1,
+                    background: isCurrent
+                      ? "#E5E7EB"
+                      : plan.popular
+                        ? colors.accent
+                        : "transparent",
+                    color: isCurrent ? colors.textMuted : plan.popular ? "#FFFFFF" : colors.accent,
+                    border: isCurrent ? "1px solid #E5E7EB" : plan.popular ? "none" : `1.5px solid ${colors.accent}`,
                   }}
                 >
-                  {checkoutLoading === plan.key ? "Redirection…" : "Choisir ce plan"}
+                  {isCurrent
+                    ? "Plan actuel"
+                    : checkoutLoading === plan.key
+                      ? "Redirection…"
+                      : "Passer à ce plan"}
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -806,17 +1086,91 @@ export default function SettingsPage() {
             emailAlerts,
             setEmailAlerts
           )}
+          {emailAlerts && (
+            <div style={{ padding: "0 0 16px", borderBottom: "1px solid #F3F4F6" }}>
+              <p style={{ margin: "0 0 8px", fontSize: "13px", color: colors.textMuted }}>
+                Les alertes seront envoyées à{" "}
+                <strong style={{ color: colors.text }}>{alertEmail || userEmail}</strong>
+              </p>
+              <label style={labelStyle}>Email d&apos;alerte (optionnel)</label>
+              <input
+                type="email"
+                value={alertEmail}
+                onChange={(e) => setAlertEmail(e.target.value)}
+                placeholder={userEmail}
+                style={inputStyle}
+              />
+            </div>
+          )}
           {renderToggleRow(
             "Alertes Slack",
             "Envoie les leads directement dans ton canal Slack",
             slackAlerts,
             setSlackAlerts
           )}
+          {slackAlerts && (
+            <div style={{ padding: "0 0 16px", borderBottom: "1px solid #F3F4F6" }}>
+              <label style={labelStyle}>URL du webhook Slack</label>
+              <input
+                type="url"
+                value={slackWebhook}
+                onChange={(e) => setSlackWebhook(e.target.value)}
+                placeholder="https://hooks.slack.com/services/…"
+                style={{ ...inputStyle, marginBottom: "10px" }}
+              />
+              <button
+                type="button"
+                disabled={slackTesting || !slackWebhook.trim()}
+                onClick={async () => {
+                  setSlackTesting(true);
+                  const res = await fetch("/api/slack-test", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ webhookUrl: slackWebhook }),
+                  });
+                  const data = await res.json();
+                  setToast(
+                    res.ok ? "Message de test envoyé sur Slack ✓" : data.error || "Échec du test"
+                  );
+                  setSlackTesting(false);
+                }}
+                style={{
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  background: colors.card,
+                  border: `1px solid ${colors.accent}`,
+                  color: colors.accent,
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontFamily,
+                }}
+              >
+                {slackTesting ? "Test…" : "Tester la connexion"}
+              </button>
+            </div>
+          )}
           {renderToggleRow(
             "Scan automatique",
-            "Lance un scan Reddit chaque jour à 8h",
+            `Lance un scan Reddit chaque jour à ${autoScanHour}h`,
             autoScan,
             setAutoScan
+          )}
+          {autoScan && (
+            <div style={{ padding: "0 0 16px", borderBottom: "1px solid #F3F4F6" }}>
+              <label style={labelStyle}>Heure du scan quotidien</label>
+              <select
+                value={autoScanHour}
+                onChange={(e) => setAutoScanHour(Number(e.target.value))}
+                style={inputStyle}
+              >
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={i}>
+                    {String(i).padStart(2, "0")}:00
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
           {renderToggleRow(
             "Résumé hebdomadaire",
@@ -824,6 +1178,40 @@ export default function SettingsPage() {
             weeklyDigest,
             setWeeklyDigest
           )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !isDirty}
+            onMouseEnter={() => setSaveHover(true)}
+            onMouseLeave={() => setSaveHover(false)}
+            style={{
+              ...primaryButton(saveHover, saving || !isDirty),
+              marginTop: "20px",
+              width: btnWidth,
+              minWidth: btnMinWidth,
+              padding: "12px 28px",
+              fontSize: "14px",
+              fontWeight: 600,
+              fontFamily,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            {saving && (
+              <span
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  borderTopColor: "#fff",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+            )}
+            {saving ? "Sauvegarde…" : "Sauvegarder"}
+          </button>
         </div>
       )}
 
@@ -841,6 +1229,81 @@ export default function SettingsPage() {
               {userEmail || "—"}
             </p>
           </div>
+
+          <div style={{ ...cardBase, padding: cardPadding }}>
+            <p style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700, color: colors.text }}>
+              Sécurité
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!userEmail) return;
+                const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
+                  redirectTo: `${window.location.origin}/login`,
+                });
+                setToast(
+                  error
+                    ? "Erreur : " + error.message
+                    : "Email de réinitialisation envoyé à votre adresse"
+                );
+              }}
+              style={{
+                marginTop: "12px",
+                padding: "10px 20px",
+                fontSize: "14px",
+                fontWeight: 600,
+                color: colors.accent,
+                background: colors.card,
+                border: `1px solid ${colors.accent}`,
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontFamily,
+              }}
+            >
+              Changer mon mot de passe
+            </button>
+          </div>
+
+          {stripeCustomerId && (
+            <div style={{ ...cardBase, padding: cardPadding }}>
+              <p style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700, color: colors.text }}>
+                Facturation
+              </p>
+              {billingName && (
+                <p style={{ margin: "8px 0 0", fontSize: "14px", color: colors.text }}>
+                  {billingName}
+                </p>
+              )}
+              {billingAddress && (
+                <p style={{ margin: "4px 0 0", fontSize: "13px", color: colors.textMuted }}>
+                  {billingAddress}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await fetch("/api/stripe/billing-portal", { method: "POST" });
+                  const data = await res.json();
+                  if (data.url) window.location.href = data.url;
+                  else setToast(data.error || "Portail indisponible");
+                }}
+                style={{
+                  marginTop: "16px",
+                  padding: "10px 20px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: colors.accent,
+                  background: "transparent",
+                  border: `1px solid ${colors.accent}`,
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontFamily,
+                }}
+              >
+                Gérer ma facturation
+              </button>
+            </div>
+          )}
 
           <div
             style={{
@@ -878,7 +1341,10 @@ export default function SettingsPage() {
             </button>
             <button
               type="button"
-              onClick={() => setToast("Contacte le support pour supprimer ton compte.")}
+              onClick={() => {
+                setDeleteConfirm("");
+                setDeleteModalOpen(true);
+              }}
               style={{
                 width: isMobile ? "100%" : "auto",
                 padding: "10px 20px",
@@ -901,6 +1367,100 @@ export default function SettingsPage() {
       {toast && (
         <Toast message={toast} isMobile={isMobile} onClose={() => setToast(null)} />
       )}
+
+      {deleteModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 200,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+          onClick={() => setDeleteModalOpen(false)}
+        >
+          <div
+            style={{
+              ...cardBase,
+              padding: cardPadding,
+              maxWidth: "440px",
+              width: "100%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p style={{ margin: "0 0 8px", fontSize: "18px", fontWeight: 700, color: "#DC2626" }}>
+              Supprimer mon compte
+            </p>
+            <p style={{ margin: "0 0 16px", fontSize: "14px", color: colors.textMuted, lineHeight: 1.5 }}>
+              Cette action est irréversible. Toutes vos données seront supprimées définitivement.
+            </p>
+            <label style={labelStyle}>
+              Tapez <strong>SUPPRIMER</strong> pour confirmer
+            </label>
+            <input
+              type="text"
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder="SUPPRIMER"
+              style={{ ...inputStyle, marginBottom: "16px" }}
+            />
+            <div style={{ display: "flex", gap: "10px", flexDirection: isMobile ? "column" : "row" }}>
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                style={{
+                  flex: 1,
+                  padding: "10px 16px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  background: colors.card,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontFamily,
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={deleteConfirm !== "SUPPRIMER"}
+                onClick={async () => {
+                  const res = await fetch("/api/account/delete", { method: "DELETE" });
+                  if (res.ok) {
+                    await supabase.auth.signOut();
+                    router.push("/login");
+                    router.refresh();
+                  } else {
+                    const data = await res.json();
+                    setToast(data.error || "Erreur lors de la suppression");
+                    setDeleteModalOpen(false);
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  padding: "10px 16px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  background: deleteConfirm === "SUPPRIMER" ? "#DC2626" : "#FECACA",
+                  color: deleteConfirm === "SUPPRIMER" ? "#fff" : "#991B1B",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: deleteConfirm === "SUPPRIMER" ? "pointer" : "not-allowed",
+                  fontFamily,
+                }}
+              >
+                Supprimer définitivement
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

@@ -1,5 +1,11 @@
-export function formatRelativeTime(dateString: string): string {
+import { getLeadDate } from "@/lib/leads-utils";
+
+export function formatRelativeTime(dateString: string | null | undefined): string {
+  if (!dateString) return "";
+
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "";
+
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
@@ -13,5 +19,18 @@ export function formatRelativeTime(dateString: string): string {
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `il y a ${diffDays}j`;
 
-  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+  return date.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function formatLeadRelative(lead: {
+  post_created_at?: string | null;
+  created_at?: string | null;
+}): string {
+  const date = getLeadDate(lead as Parameters<typeof getLeadDate>[0]);
+  if (!date) return "";
+  return formatRelativeTime(date.toISOString());
 }
