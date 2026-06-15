@@ -37,7 +37,7 @@ export default function Feature1() {
               Reddit automatiquement. Des alternatives à Octolens ?&rdquo;
             </p>
             <a
-              href="#hero"
+              href="/login"
               className="mt-5 inline-block text-sm font-semibold text-brand-cta transition-colors hover:text-brand-cta-hover"
             >
               Voir la réponse IA →

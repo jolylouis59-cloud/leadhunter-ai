@@ -73,6 +73,8 @@ export default function CguPage() {
           <h2 style={sectionTitle}>2. Éditeur du service</h2>
           <p style={paragraph}>
             LeadHunter AI<br />
+            SIRET : 94292551200017<br />
+            Siège social : Faches-Thumesnil, France<br />
             Email : contact@leadhunterai.fr
           </p>
 

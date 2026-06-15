@@ -11,7 +11,7 @@ const REVIEWS = [
     avatarBg: "#E8F5E9",
     avatarColor: "#1F4D3A",
     quote:
-      "franchement j'étais sceptique au debut mais la j'ai eu 2 rdv qualifiés en une semaine via Reddit. je savais meme pas que mes clients étaient la",
+      "Franchement j'étais sceptique au début, mais là j'ai eu 2 RDV qualifiés en une semaine via Reddit. Je ne savais même pas que mes clients étaient là.",
   },
   {
     name: "Sarah L.",
@@ -20,7 +20,7 @@ const REVIEWS = [
     avatarBg: "#FFF3E0",
     avatarColor: "#E65100",
     quote:
-      "Le score d'intention c'est ouf. avant je répondais à tout le monde, maintenant je cible juste les 90+. mon taux de réponse a explosé",
+      "Le score d'intention c'est impressionnant. Avant je répondais à tout le monde, maintenant je cible juste les 90+. Mon taux de réponse a explosé.",
   },
   {
     name: "Karim B.",
@@ -29,7 +29,7 @@ const REVIEWS = [
     avatarBg: "#E3F2FD",
     avatarColor: "#1565C0",
     quote:
-      "on a remplacé notre SDR junior avec ça. 99€/mois vs 2500€ de salaire... le calcul est vite fait lol",
+      "On a remplacé notre SDR junior avec ça. 99€/mois vs 2500€ de salaire... le calcul est vite fait.",
   },
   {
     name: "Marc D.",
@@ -38,7 +38,7 @@ const REVIEWS = [
     avatarBg: "#F3E5F5",
     avatarColor: "#7B1FA2",
     quote:
-      "ca remplace facilement 3 outils qu'on utilisait avant. ROI positif dès le premier mois, sans exagerer",
+      "Ça remplace facilement 3 outils qu'on utilisait avant. ROI positif dès le premier mois, sans exagérer.",
   },
   {
     name: "Julie R.",
@@ -47,7 +47,7 @@ const REVIEWS = [
     avatarBg: "#FCE4EC",
     avatarColor: "#C2185B",
     quote:
-      "jsp comment vous faites mais les leads sont vraiment chauds. j'ai closé mon premier client 3 jours apres l'acces beta",
+      "Je ne sais pas comment vous faites mais les leads sont vraiment chauds. J'ai signé mon premier client 3 jours après l'accès bêta.",
   },
   {
     name: "Antoine V.",
@@ -56,7 +56,7 @@ const REVIEWS = [
     avatarBg: "#E0F2F1",
     avatarColor: "#00695C",
     quote:
-      "La génération de réponse IA est bluffante. j'ai juste personalisé 2-3 trucs et envoyé. conversion direct",
+      "La génération de réponse IA est bluffante. J'ai juste personnalisé 2-3 trucs et envoyé. Conversion directe.",
   },
 ];
 

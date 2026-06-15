@@ -1,7 +1,13 @@
+"use client";
+
+import { useState } from "react";
+
 const plans = [
   {
     name: "Starter",
-    price: "49€",
+    monthlyPrice: 49,
+    annualPrice: 39,
+    annualTotal: 468,
     desc: "Pour les solopreneurs qui veulent leurs premiers clients",
     features: [
       "300 leads/mois",
@@ -16,7 +22,9 @@ const plans = [
   },
   {
     name: "Growth",
-    price: "99€",
+    monthlyPrice: 99,
+    annualPrice: 79,
+    annualTotal: 948,
     desc: "Pour les founders qui veulent scaler leur acquisition",
     features: [
       "1000 leads/mois",
@@ -33,7 +41,9 @@ const plans = [
   },
   {
     name: "Agency",
-    price: "199€",
+    monthlyPrice: 199,
+    annualPrice: 159,
+    annualTotal: 1908,
     desc: "Pour les agences qui gèrent plusieurs clients",
     features: [
       "Leads illimités",
@@ -50,6 +60,8 @@ const plans = [
 ];
 
 export default function Pricing() {
+  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
+
   return (
     <section id="pricing" className="section-padding bg-white">
       <div className="container-page">
@@ -60,9 +72,49 @@ export default function Pricing() {
           7 jours gratuits sur tous les plans. Aucune CB requise.
         </p>
 
+        <div className="mx-auto mt-8 flex w-fit items-center gap-1 rounded-lg bg-gray-100 p-1">
+          <button
+            type="button"
+            onClick={() => setBilling("monthly")}
+            style={{
+              padding: "8px 20px",
+              borderRadius: "6px",
+              border: "none",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              background: billing === "monthly" ? "#FFFFFF" : "transparent",
+              color: billing === "monthly" ? "#2B2B2B" : "#6B7280",
+              boxShadow: billing === "monthly" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+            }}
+          >
+            Mensuel
+          </button>
+          <button
+            type="button"
+            onClick={() => setBilling("annual")}
+            style={{
+              padding: "8px 20px",
+              borderRadius: "6px",
+              border: "none",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              background: billing === "annual" ? "#FFFFFF" : "transparent",
+              color: billing === "annual" ? "#2B2B2B" : "#6B7280",
+              boxShadow: billing === "annual" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+            }}
+          >
+            Annuel <span style={{ color: "#1F4D3A", fontSize: "11px" }}>-20%</span>
+          </button>
+        </div>
+
         <div className="mt-14 grid items-center gap-6 lg:grid-cols-3">
           {plans.map((plan) => {
             const isPopular = plan.popular;
+            const displayPrice =
+              billing === "monthly" ? plan.monthlyPrice : plan.annualPrice;
+
             return (
               <div
                 key={plan.name}
@@ -83,10 +135,17 @@ export default function Pricing() {
                 </h3>
                 <div className="mt-4 flex items-baseline gap-1">
                   <span className={`text-4xl font-extrabold ${isPopular ? "text-white" : "text-brand-text"}`}>
-                    {plan.price}
+                    {displayPrice}€
                   </span>
                   <span className={isPopular ? "text-gray-400" : "text-brand-muted"}>/mois</span>
                 </div>
+                {billing === "annual" && (
+                  <p
+                    className={`mt-1 text-xs ${isPopular ? "text-gray-400" : "text-brand-muted"}`}
+                  >
+                    soit {plan.annualPrice}€/mois, facturé {plan.annualTotal}€/an
+                  </p>
+                )}
                 <p className={`mt-2 text-sm ${isPopular ? "text-gray-400" : "text-brand-muted"}`}>
                   {plan.desc}
                 </p>
@@ -104,7 +163,7 @@ export default function Pricing() {
                 </ul>
 
                 <a
-                  href="#hero"
+                  href="/login"
                   className={`mt-8 block w-full text-center ${
                     plan.variant === "solid"
                       ? "btn-primary"

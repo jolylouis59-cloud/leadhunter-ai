@@ -34,7 +34,7 @@ export default function Feature2() {
                 sur Reddit.
               </p>
               <a
-                href="#hero"
+                href="/login"
                 className="btn-primary mt-5 inline-block px-4 py-2 text-xs"
               >
                 Générer →
