@@ -185,7 +185,12 @@ export default function DashboardPage() {
         return;
       }
 
+      await new Promise((resolve) => setTimeout(resolve, 1500));
       const refreshed = await fetchLeads({ silent: true });
+
+      setTimeout(() => {
+        void fetchLeads({ silent: true });
+      }, 3000);
 
       const inserted =
         typeof result.leads_inserted === "number"
