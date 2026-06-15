@@ -7,7 +7,7 @@ import ResponseModal from "@/components/dashboard/ResponseModal";
 import Toast from "@/components/dashboard/Toast";
 import { supabase } from "@/lib/supabase-client";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
-import { filterRealLeads, getLeadTimestamp } from "@/lib/leads-utils";
+import { getLeadTimestamp } from "@/lib/leads-utils";
 import type { Lead, LeadStatus } from "@/lib/types";
 
 type FilterTab = "all" | LeadStatus;
@@ -68,17 +68,17 @@ export default function DashboardPage() {
   const [scanHover, setScanHover] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
-  const realLeads = useMemo(() => filterRealLeads(leads), [leads]);
-
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
+  const fetchLeads = useCallback(async (options?: { silent?: boolean }): Promise<Lead[]> => {
+    if (!options?.silent) {
+      setLoading(true);
+    }
     setFetchError(null);
 
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) return [];
 
       const { data, error } = await supabase
         .from("leads")
@@ -88,14 +88,19 @@ export default function DashboardPage() {
 
       if (error) {
         setFetchError(error.message);
-        return;
+        return [];
       }
 
-      setLeads((data as Lead[]) ?? []);
+      const nextLeads = (data as Lead[]) ?? [];
+      setLeads(nextLeads);
+      return nextLeads;
     } catch (e) {
       setFetchError(e instanceof Error ? e.message : "Erreur réseau");
+      return [];
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -104,18 +109,18 @@ export default function DashboardPage() {
   }, [fetchLeads]);
 
   const stats = useMemo(() => {
-    const total = realLeads.length;
-    const newCount = realLeads.filter((l) => l.status === "new").length;
-    const responded = realLeads.filter((l) => l.status === "responded").length;
+    const total = leads.length;
+    const newCount = leads.filter((l) => l.status === "new").length;
+    const responded = leads.filter((l) => l.status === "responded").length;
     const responseRate = total > 0 ? Math.round((responded / total) * 100) : 0;
-    const thisWeek = countInWeek(realLeads, 0);
-    const lastWeek = countInWeek(realLeads, 1);
+    const thisWeek = countInWeek(leads, 0);
+    const lastWeek = countInWeek(leads, 1);
     const respondedThisWeek = countInWeek(
-      realLeads.filter((l) => l.status === "responded"),
+      leads.filter((l) => l.status === "responded"),
       0
     );
     const respondedLastWeek = countInWeek(
-      realLeads.filter((l) => l.status === "responded"),
+      leads.filter((l) => l.status === "responded"),
       1
     );
     return {
@@ -128,10 +133,10 @@ export default function DashboardPage() {
       respondedThisWeek,
       respondedLastWeek,
     };
-  }, [realLeads]);
+  }, [leads]);
 
   const filteredLeads = useMemo(() => {
-    let result = realLeads.filter((lead) => {
+    let result = leads.filter((lead) => {
       if (activeTab !== "all" && lead.status !== activeTab) return false;
       if (lead.intent_score < minScore) return false;
       if (platformFilter !== "all" && (lead.platform ?? "reddit").toLowerCase() !== platformFilter)
@@ -153,7 +158,7 @@ export default function DashboardPage() {
     });
 
     return result;
-  }, [realLeads, activeTab, minScore, platformFilter, sortBy]);
+  }, [leads, activeTab, minScore, platformFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
   const paginatedLeads = filteredLeads.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -166,7 +171,7 @@ export default function DashboardPage() {
     setScanning(true);
     setToast({ message: "Scan en cours sur Reddit… cela peut prendre 15-30 secondes", type: "info" });
 
-    const countBefore = realLeads.length;
+    const countBefore = leads.length;
 
     try {
       const res = await fetch("/api/scan-reddit", { method: "POST" });
@@ -180,21 +185,12 @@ export default function DashboardPage() {
         return;
       }
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+      const refreshed = await fetchLeads({ silent: true });
 
-      const { data } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("intent_score", { ascending: false });
-
-      const newLeads = filterRealLeads((data as Lead[]) ?? []);
-      setLeads(data ?? []);
-
-      const inserted = result.leads_inserted ?? newLeads.length - countBefore;
+      const inserted =
+        typeof result.leads_inserted === "number"
+          ? result.leads_inserted
+          : Math.max(0, refreshed.length - countBefore);
       if (inserted > 0) {
         setToast({ message: `${inserted} nouveaux leads trouvés !`, type: "success" });
       } else {
@@ -220,7 +216,7 @@ export default function DashboardPage() {
       });
       const data = await res.json();
       if (res.ok && data.response) {
-        const lead = realLeads.find((l) => l.id === leadId);
+        const lead = leads.find((l) => l.id === leadId);
         setModalLeadTitle(lead?.post_title ?? lead?.title ?? "Lead");
         setModalResponse(data.response);
         setModalLeadId(leadId);
@@ -565,7 +561,7 @@ export default function DashboardPage() {
               Réessayer
             </button>
           </div>
-        ) : realLeads.length === 0 ? (
+        ) : leads.length === 0 ? (
           renderEmptyState()
         ) : filteredLeads.length === 0 ? (
           <div style={{ ...cardBase, padding: "48px 24px", textAlign: "center" }}>
