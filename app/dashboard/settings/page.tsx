@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
@@ -701,9 +702,27 @@ function SettingsContent() {
             <p style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700, color: colors.text }}>
               Configuration du scanner
             </p>
-            <p style={{ margin: 0, fontSize: "13px", color: colors.textMuted }}>
+            <p style={{ margin: "0 0 12px", fontSize: "13px", color: colors.textMuted }}>
               Ces infos sont utilisées par Claude pour scorer l&apos;intention d&apos;achat sur Reddit.
             </p>
+            <Link
+              href="/dashboard/onboarding"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "10px 16px",
+                fontSize: "13px",
+                fontWeight: 600,
+                color: "#fff",
+                background: colors.accent,
+                borderRadius: "8px",
+                textDecoration: "none",
+                fontFamily,
+              }}
+            >
+              Configurer mon profil client →
+            </Link>
           </div>
 
           <div>

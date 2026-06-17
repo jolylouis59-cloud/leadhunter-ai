@@ -1,16 +1,5 @@
 import type { Lead } from "@/lib/types";
 
-export function isTestLead(lead: Lead): boolean {
-  const author = lead.author ?? lead.username ?? "";
-  if (/^test_user\d*$/i.test(author)) return true;
-  if (lead.post_url?.includes("reddit.com/test")) return true;
-  return false;
-}
-
-export function filterRealLeads(leads: Lead[]): Lead[] {
-  return leads.filter((l) => !isTestLead(l));
-}
-
 export function getLeadDate(lead: Lead): Date | null {
   const raw = lead.post_created_at || lead.created_at;
   if (!raw) return null;

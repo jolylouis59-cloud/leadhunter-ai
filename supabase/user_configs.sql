@@ -53,3 +53,12 @@ alter table public.user_configs add column if not exists weekly_digest boolean d
 alter table public.user_configs add column if not exists trial_ends_at timestamptz;
 alter table public.user_configs add column if not exists billing_name text;
 alter table public.user_configs add column if not exists billing_address text;
+
+-- Profil onboarding structuré
+alter table public.user_configs add column if not exists product_name text;
+alter table public.user_configs add column if not exists target_audience text;
+alter table public.user_configs add column if not exists pain_point text;
+alter table public.user_configs add column if not exists competitors text;
+alter table public.user_configs add column if not exists website_url text;
+alter table public.user_configs add column if not exists target_pricing text;
+alter table public.user_configs add column if not exists onboarding_completed boolean default false;

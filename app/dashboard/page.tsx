@@ -78,13 +78,22 @@ export default function DashboardPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return [];
+      if (!user) {
+        console.log("LEADS ERROR: No authenticated user");
+        return [];
+      }
+
+      const userId = user.id;
+      console.log("USER ID:", user?.id);
 
       const { data, error } = await supabase
         .from("leads")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .order("intent_score", { ascending: false });
+
+      console.log("LEADS DATA:", data);
+      console.log("LEADS ERROR:", error);
 
       if (error) {
         setFetchError(error.message);
@@ -174,7 +183,15 @@ export default function DashboardPage() {
     const countBefore = leads.length;
 
     try {
-      const res = await fetch("/api/scan-reddit", { method: "POST" });
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      console.log("SCAN USER ID:", user?.id);
+
+      const res = await fetch("/api/scan-reddit", {
+        method: "POST",
+        credentials: "include",
+      });
       const result = await res.json();
 
       if (!res.ok) {

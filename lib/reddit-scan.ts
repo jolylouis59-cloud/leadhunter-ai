@@ -203,23 +203,24 @@ async function insertTestLeads(
   logDebug(logs, "Mode test — insertion de 5 leads fictifs");
 
   for (const lead of TEST_LEADS) {
-    const { error: insertError } = await supabase.from("leads").upsert(
-      {
-        user_id: userId,
-        platform: "reddit",
-        post_title: lead.post_title,
-        post_body: "",
-        post_url: lead.post_url,
-        subreddit: lead.subreddit,
-        author: lead.author,
-        intent_score: lead.intent_score,
-        status: "new",
-      },
-      {
-        onConflict: "user_id,post_url",
-        ignoreDuplicates: false,
-      }
-    );
+    const leadRow = {
+      user_id: userId,
+      platform: "reddit",
+      post_title: lead.post_title,
+      post_body: "",
+      post_url: lead.post_url,
+      subreddit: lead.subreddit,
+      author: lead.author,
+      intent_score: lead.intent_score,
+      status: "new",
+    };
+
+    console.log("INSERTING LEADS FOR USER:", userId);
+    const { data: inserted, error: insertError } = await supabase.from("leads").upsert(leadRow, {
+      onConflict: "user_id,post_url",
+      ignoreDuplicates: false,
+    });
+    console.log("INSERT RESULT:", inserted, insertError);
 
     if (insertError) {
       logError(logs, `Test insert failed: ${insertError.message}`);
@@ -483,23 +484,24 @@ export async function scanRedditForUser(
         continue;
       }
 
-      const { error: insertError } = await supabase.from("leads").upsert(
-        {
-          user_id: userId,
-          platform: "reddit",
-          post_title: post.title,
-          post_body: post.selftext?.slice(0, 1000) || "",
-          post_url: postUrl,
-          subreddit: post.subreddit,
-          author: post.author,
-          intent_score: intent.score,
-          status: "new",
-        },
-        {
-          onConflict: "user_id,post_url",
-          ignoreDuplicates: false,
-        }
-      );
+      const leadRow = {
+        user_id: userId,
+        platform: "reddit",
+        post_title: post.title,
+        post_body: post.selftext?.slice(0, 1000) || "",
+        post_url: postUrl,
+        subreddit: post.subreddit,
+        author: post.author,
+        intent_score: intent.score,
+        status: "new",
+      };
+
+      console.log("INSERTING LEADS FOR USER:", userId);
+      const { data: inserted, error: insertError } = await supabase.from("leads").upsert(leadRow, {
+        onConflict: "user_id,post_url",
+        ignoreDuplicates: false,
+      });
+      console.log("INSERT RESULT:", inserted, insertError);
 
       if (insertError) {
         logError(logs, `Insert failed: ${insertError.message}`);
