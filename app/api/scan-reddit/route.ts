@@ -12,7 +12,7 @@ const REDDIT_RATE_LIMIT_RETRY_MS = 5000;
 const MAX_SCAN_COMBINATIONS = 8;
 const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
-const MIN_INTENT_SCORE_TO_INSERT = 5;
+const MIN_INTENT_SCORE_TO_INSERT = 15;
 
 const DEFAULT_KEYWORDS = ["B2B", "prospecting", "lead generation"];
 const DEFAULT_SUBREDDITS = ["entrepreneur", "SaaS", "smallbusiness"];
