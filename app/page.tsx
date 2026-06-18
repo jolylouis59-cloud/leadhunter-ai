@@ -5,7 +5,7 @@ import Feature1 from "@/components/Feature1";
 import Feature2 from "@/components/Feature2";
 import HowItWorks from "@/components/HowItWorks";
 import Testimonials from "@/components/Testimonials";
-import LaunchOffer from "@/components/LaunchOffer";
+import TryLuckSection from "@/components/TryLuckSection";
 import Pricing from "@/components/Pricing";
 import FinalCTA from "@/components/FinalCTA";
 import FAQ from "@/components/FAQ";
@@ -21,7 +21,7 @@ export default function Home() {
       <Feature2 />
       <HowItWorks />
       <Testimonials />
-      <LaunchOffer />
+      <TryLuckSection />
       <Pricing />
       <FinalCTA />
       <FAQ />

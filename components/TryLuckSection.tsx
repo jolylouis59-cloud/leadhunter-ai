@@ -1,15 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import TryLuckModal from "@/components/TryLuckModal";
+import { OPEN_TRY_LUCK_EVENT } from "@/lib/try-luck-events";
 import { colors, fontFamily } from "@/lib/dashboard-styles";
 
 export default function TryLuckSection() {
   const [modalOpen, setModalOpen] = useState(false);
 
+  useEffect(() => {
+    const open = () => setModalOpen(true);
+    window.addEventListener(OPEN_TRY_LUCK_EVENT, open);
+    if (window.location.hash === "#try-luck") {
+      open();
+    }
+    return () => window.removeEventListener(OPEN_TRY_LUCK_EVENT, open);
+  }, []);
+
   return (
     <>
       <section
+        id="try-luck"
         style={{
           background: colors.bg,
           padding: "64px 24px",

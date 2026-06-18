@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { openTryLuckModal } from "@/lib/try-luck-events";
 
 const links = [
   { label: "Fonctionnalités", href: "#fonctionnalites" },
@@ -51,9 +52,13 @@ export default function Navbar() {
           >
             Se connecter
           </a>
-          <a href="#hero" className="btn-primary px-5 py-3">
+          <button
+            type="button"
+            onClick={() => openTryLuckModal()}
+            className="btn-primary px-5 py-3"
+          >
             Commencer gratuitement
-          </a>
+          </button>
         </div>
 
         <button
@@ -101,9 +106,16 @@ export default function Navbar() {
           >
             Se connecter
           </a>
-          <a href="#hero" className="btn-primary mt-3 block w-full text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              openTryLuckModal();
+            }}
+            className="btn-primary mt-3 block w-full text-center"
+          >
             Commencer gratuitement
-          </a>
+          </button>
         </div>
       )}
     </header>
