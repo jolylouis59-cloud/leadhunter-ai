@@ -8,12 +8,12 @@ const CONSENT_KEY = "cookie_consent";
 
 export default function CookieBanner() {
   const [visible, setVisible] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const consent = localStorage.getItem(CONSENT_KEY);
-    if (!consent) {
-      setVisible(true);
-    }
+    setVisible(consent !== "accepted" && consent !== "refused");
+    setReady(true);
   }, []);
 
   function saveConsent(value: "accepted" | "refused") {
@@ -21,7 +21,7 @@ export default function CookieBanner() {
     setVisible(false);
   }
 
-  if (!visible) return null;
+  if (!ready || !visible) return null;
 
   return (
     <div

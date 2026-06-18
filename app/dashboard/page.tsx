@@ -7,7 +7,7 @@ import ResponseModal from "@/components/dashboard/ResponseModal";
 import Toast from "@/components/dashboard/Toast";
 import { supabase } from "@/lib/supabase-client";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
-import { getLeadTimestamp } from "@/lib/leads-utils";
+import { dedupeLeads, getLeadCreatedTimestamp, getLeadTimestamp } from "@/lib/leads-utils";
 import type { Lead, LeadStatus } from "@/lib/types";
 
 type FilterTab = "all" | LeadStatus;
@@ -36,10 +36,13 @@ function countInWeek(leads: Lead[], weeksAgo: number): number {
   const end = now - weeksAgo * weekMs;
   const start = end - weekMs;
   return leads.filter((l) => {
-    const t = getLeadTimestamp(l);
+    const t = getLeadCreatedTimestamp(l);
     return t >= start && t < end;
   }).length;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
 
 function TrendBadge({ current, previous }: { current: number; previous: number }) {
   if (current === previous) return null;
@@ -49,6 +52,10 @@ function TrendBadge({ current, previous }: { current: number; previous: number }
       {up ? "↑" : "↓"} {Math.abs(current - previous)}
     </span>
   );
+}
+
+function dedupeLeadsByPostUrl(leads: Lead[]): Lead[] {
+  return dedupeLeads(leads);
 }
 
 export default function DashboardPage() {
@@ -100,7 +107,7 @@ export default function DashboardPage() {
         return [];
       }
 
-      const nextLeads = (data as Lead[]) ?? [];
+      const nextLeads = dedupeLeadsByPostUrl((data as Lead[]) ?? []);
       setLeads(nextLeads);
       return nextLeads;
     } catch (e) {
@@ -118,12 +125,18 @@ export default function DashboardPage() {
   }, [fetchLeads]);
 
   const stats = useMemo(() => {
+    const now = Date.now();
     const total = leads.length;
-    const newCount = leads.filter((l) => l.status === "new").length;
+    const newLast24h = leads.filter((l) => {
+      const t = getLeadCreatedTimestamp(l);
+      return t > 0 && t >= now - DAY_MS;
+    }).length;
     const responded = leads.filter((l) => l.status === "responded").length;
     const responseRate = total > 0 ? Math.round((responded / total) * 100) : 0;
-    const thisWeek = countInWeek(leads, 0);
-    const lastWeek = countInWeek(leads, 1);
+    const leadsThisWeek = leads.filter((l) => {
+      const t = getLeadCreatedTimestamp(l);
+      return t > 0 && t >= now - WEEK_MS;
+    }).length;
     const respondedThisWeek = countInWeek(
       leads.filter((l) => l.status === "responded"),
       0
@@ -134,14 +147,22 @@ export default function DashboardPage() {
     );
     return {
       total,
-      new: newCount,
+      newLast24h,
       responded,
       responseRate,
-      thisWeek,
-      lastWeek,
+      leadsThisWeek,
       respondedThisWeek,
       respondedLastWeek,
     };
+  }, [leads]);
+
+  const topLeadsToday = useMemo(() => {
+    const cutoff = Date.now() - DAY_MS;
+    const recent = leads.filter((l) => {
+      const t = getLeadCreatedTimestamp(l);
+      return t > 0 && t >= cutoff;
+    });
+    return dedupeLeads(recent).slice(0, 3);
   }, [leads]);
 
   const filteredLeads = useMemo(() => {
@@ -171,6 +192,9 @@ export default function DashboardPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / PAGE_SIZE));
   const paginatedLeads = filteredLeads.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const allPageLeadsProcessed =
+    paginatedLeads.length > 0 &&
+    paginatedLeads.every((l) => l.status === "responded" || l.status === "ignored");
 
   useEffect(() => {
     setPage(1);
@@ -195,8 +219,12 @@ export default function DashboardPage() {
       const result = await res.json();
 
       if (!res.ok) {
+        const errorMessage =
+          result.error === "Reddit API non configurée"
+            ? "Reddit API non configurée — Configure tes credentials Reddit dans les paramètres"
+            : result.error || "Erreur lors du scan Reddit";
         setToast({
-          message: result.error || "Erreur lors du scan Reddit",
+          message: errorMessage,
           type: "error",
         });
         return;
@@ -330,10 +358,34 @@ export default function DashboardPage() {
   }
 
   const statCards = [
-    { key: "total", label: "Total leads", value: stats.total, icon: "📊", trend: [stats.thisWeek, stats.lastWeek] as const },
-    { key: "new", label: "Leads nouveaux", value: stats.new, icon: "🆕", trend: null },
-    { key: "responded", label: "Répondus", value: stats.responded, icon: "✅", trend: [stats.respondedThisWeek, stats.respondedLastWeek] as const },
-    { key: "rate", label: "Taux de réponse", value: `${stats.responseRate}%`, icon: "📈", trend: null },
+    {
+      key: "total",
+      label: "Total leads",
+      value: stats.total,
+      icon: "📊",
+      sublabel: `+${stats.leadsThisWeek} cette semaine`,
+    },
+    {
+      key: "new",
+      label: "Leads nouveaux",
+      value: stats.newLast24h,
+      icon: "🆕",
+      sublabel: "Dernières 24h",
+    },
+    {
+      key: "responded",
+      label: "Répondus",
+      value: stats.responded,
+      icon: "✅",
+      trend: [stats.respondedThisWeek, stats.respondedLastWeek] as const,
+    },
+    {
+      key: "rate",
+      label: "Taux de réponse",
+      value: `${stats.responseRate}%`,
+      icon: "📈",
+      sublabel: null,
+    },
   ];
 
   return (
@@ -434,7 +486,12 @@ export default function DashboardPage() {
                 {stat.value}
               </p>
               <p style={{ margin: "6px 0 0", fontSize: "13px", color: colors.textMuted }}>{stat.label}</p>
-              {stat.trend && (
+              {"sublabel" in stat && stat.sublabel && (
+                <p style={{ margin: "4px 0 0", fontSize: "12px", color: colors.accent, fontWeight: 600 }}>
+                  {stat.sublabel}
+                </p>
+              )}
+              {"trend" in stat && stat.trend && (
                 <p style={{ margin: "4px 0 0", fontSize: "12px" }}>
                   <TrendBadge current={stat.trend[0]} previous={stat.trend[1]} />
                 </p>
@@ -444,6 +501,81 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {topLeadsToday.length > 0 && (
+        <section
+          style={{
+            background: colors.accent,
+            borderRadius: "12px",
+            padding: "20px",
+            marginBottom: "32px",
+            color: "#ffffff",
+          }}
+        >
+          <h2 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700 }}>
+            🔥 Top 3 leads du jour
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {topLeadsToday.map((lead) => {
+              const title = lead.post_title ?? lead.title ?? "Sans titre";
+              return (
+                <div
+                  key={lead.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    flexWrap: "wrap",
+                    background: "rgba(255,255,255,0.1)",
+                    borderRadius: "8px",
+                    padding: "12px 16px",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: "14px",
+                        fontWeight: 600,
+                        lineHeight: 1.4,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {title}
+                    </p>
+                  </div>
+                  <span style={{ fontSize: "14px", fontWeight: 700, flexShrink: 0 }}>
+                    {lead.intent_score}/100
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleGenerate(lead.id)}
+                    disabled={generatingId === lead.id}
+                    style={{
+                      background: "#ffffff",
+                      color: colors.accent,
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "8px 14px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: generatingId === lead.id ? "not-allowed" : "pointer",
+                      opacity: generatingId === lead.id ? 0.7 : 1,
+                      fontFamily,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {generatingId === lead.id ? "Génération…" : "Répondre"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
         {TABS.map((tab) => {
@@ -593,6 +725,23 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
+            {allPageLeadsProcessed && (
+              <div
+                style={{
+                  ...cardBase,
+                  marginBottom: "16px",
+                  padding: "16px 20px",
+                  textAlign: "center",
+                  background: "#ECFDF5",
+                  border: "1px solid #86EFAC",
+                }}
+              >
+                <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: colors.accent }}>
+                  ✅ Tu as traité tous tes leads ! Reviens demain ou lance un nouveau scan.
+                </p>
+              </div>
+            )}
+
             {paginatedLeads.map((lead) => (
               <LeadCard
                 key={lead.id}

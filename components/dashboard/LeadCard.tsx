@@ -85,6 +85,24 @@ export default function LeadCard({
             {platformStyle.label}
           </span>
 
+          {lead.intent_score >= 85 && (
+            <span
+              style={{
+                display: "inline-block",
+                marginLeft: "8px",
+                backgroundColor: "#DC2626",
+                color: "#ffffff",
+                borderRadius: "999px",
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+              }}
+            >
+              CHAUD
+            </span>
+          )}
+
           <h3
             style={{
               marginTop: "12px",

@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 import { XMLParser } from "fast-xml-parser";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIN_INTENT_SCORE_TO_INSERT = 15;
+const MIN_INTENT_SCORE_TO_INSERT = 25;
 const MODEL = "claude-haiku-4-5-20251001";
 
 const env = Object.fromEntries(

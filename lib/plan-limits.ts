@@ -1,12 +1,23 @@
 export const KEYWORD_LIMITS: Record<string, number> = {
-  free: 5,
-  starter: 10,
-  growth: 20,
+  free: 50,
+  starter: 50,
+  growth: 50,
+  agency: 50,
+};
+
+export const SUBREDDIT_LIMITS: Record<string, number> = {
+  free: 50,
+  starter: 50,
+  growth: 50,
   agency: 50,
 };
 
 export function getKeywordLimit(plan: string): number {
   return KEYWORD_LIMITS[plan] ?? KEYWORD_LIMITS.free;
+}
+
+export function getSubredditLimit(plan: string): number {
+  return SUBREDDIT_LIMITS[plan] ?? SUBREDDIT_LIMITS.free;
 }
 
 export const PLAN_BADGE_STYLES: Record<

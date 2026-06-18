@@ -9,7 +9,7 @@ import { colors, fontFamily, getInitials } from "@/lib/dashboard-styles";
 
 const navItems = [
   { label: "Leads", href: "/dashboard", icon: "🎯" },
-  { label: "Profil scanner", href: "/dashboard/onboarding", icon: "📋" },
+  { label: "Statistiques", href: "/dashboard/stats", icon: "📊" },
   { label: "Paramètres", href: "/dashboard/settings", icon: "⚙️" },
 ];
 

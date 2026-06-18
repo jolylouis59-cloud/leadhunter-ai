@@ -17,44 +17,7 @@ const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
 const REDDIT_REQUEST_DELAY_MS = 1000;
 const REDDIT_USER_AGENT = "LeadHunterAI/1.0 by Beginning_Brain_8050";
-
-const TEST_LEADS = [
-  {
-    post_title: "Looking for B2B prospecting tool",
-    subreddit: "SaaS",
-    author: "test_user1",
-    intent_score: 85,
-    post_url: "https://reddit.com/test1",
-  },
-  {
-    post_title: "Alternatives to Octolens?",
-    subreddit: "entrepreneur",
-    author: "test_user2",
-    intent_score: 92,
-    post_url: "https://reddit.com/test2",
-  },
-  {
-    post_title: "How to find B2B clients on Reddit",
-    subreddit: "startups",
-    author: "test_user3",
-    intent_score: 78,
-    post_url: "https://reddit.com/test3",
-  },
-  {
-    post_title: "Best cold outreach tools for SaaS?",
-    subreddit: "marketing",
-    author: "test_user4",
-    intent_score: 81,
-    post_url: "https://reddit.com/test4",
-  },
-  {
-    post_title: "Need help with lead generation",
-    subreddit: "Entrepreneur_Ride_Along",
-    author: "test_user5",
-    intent_score: 74,
-    post_url: "https://reddit.com/test5",
-  },
-];
+const MIN_INTENT_SCORE_TO_INSERT = 25;
 
 type UserConfig = {
   product_description: string;
@@ -193,46 +156,6 @@ async function getRedditAccessToken(logs: ScanLogs): Promise<string | null> {
   }
 }
 
-async function insertTestLeads(
-  supabase: SupabaseClient,
-  userId: string,
-  logs: ScanLogs
-): Promise<number> {
-  let insertCount = 0;
-
-  logDebug(logs, "Mode test — insertion de 5 leads fictifs");
-
-  for (const lead of TEST_LEADS) {
-    const leadRow = {
-      user_id: userId,
-      platform: "reddit",
-      post_title: lead.post_title,
-      post_body: "",
-      post_url: lead.post_url,
-      subreddit: lead.subreddit,
-      author: lead.author,
-      intent_score: lead.intent_score,
-      status: "new",
-    };
-
-    console.log("INSERTING LEADS FOR USER:", userId);
-    const { data: inserted, error: insertError } = await supabase.from("leads").upsert(leadRow, {
-      onConflict: "user_id,post_url",
-      ignoreDuplicates: false,
-    });
-    console.log("INSERT RESULT:", inserted, insertError);
-
-    if (insertError) {
-      logError(logs, `Test insert failed: ${insertError.message}`);
-    } else {
-      insertCount++;
-      logDebug(logs, `Test lead inserted: ${lead.post_title}`);
-    }
-  }
-
-  return insertCount;
-}
-
 async function fetchRedditPosts(
   subreddit: string,
   keyword: string,
@@ -325,6 +248,12 @@ Titre : ${post.title}
 Contenu : ${post.selftext?.slice(0, 500) || ""}
 
 Donne un Intent Score de 0 à 100 (100 = cherche activement une solution).
+
+Règles de scoring :
+- Score > 70 uniquement si intention d'achat explicite : cherche un outil, compare des solutions, demande des recommandations.
+- Score < 40 si partage d'expérience, storytelling ou article de blog sans demande claire.
+- Si le post est un article de blog, un témoignage ou un partage d'expérience sans demande explicite d'outil, donne un score inférieur à 30.
+
 Réponds UNIQUEMENT avec ce JSON sans texte autour :
 {"score": 75, "reason": "L'auteur cherche activement un outil de prospection"}`,
           },
@@ -381,18 +310,16 @@ export async function scanRedditForUser(
       `Config: ${config.subreddits.length} subreddits, ${config.keywords.length} keywords`
     );
 
-    if (!process.env.REDDIT_CLIENT_ID?.trim()) {
-      logDebug(logs, "REDDIT_CLIENT_ID vide — mode test");
-      const insertCount = await insertTestLeads(supabase, userId, logs);
-
+    if (
+      !process.env.REDDIT_CLIENT_ID?.trim() ||
+      !process.env.REDDIT_CLIENT_SECRET?.trim() ||
+      !process.env.REDDIT_USERNAME?.trim() ||
+      !process.env.REDDIT_PASSWORD?.trim()
+    ) {
+      logError(logs, "Reddit API non configurée");
       return {
-        success: true,
-        mode: "test",
-        leads_found: TEST_LEADS.length,
-        leads_inserted: insertCount,
-        leads_scored: 0,
-        leads_below_threshold: 0,
-        reddit_fetches: 0,
+        success: false,
+        error: "Reddit API non configurée",
         errors: errorLog,
         debug: debugLog,
       };
@@ -479,7 +406,7 @@ export async function scanRedditForUser(
 
       if (!intent) continue;
 
-      if (intent.score < 20) {
+      if (intent.score < MIN_INTENT_SCORE_TO_INSERT) {
         belowThreshold++;
         continue;
       }

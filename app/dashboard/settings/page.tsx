@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
-import { getKeywordLimit } from "@/lib/plan-limits";
+import { getKeywordLimit, getSubredditLimit } from "@/lib/plan-limits";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -198,6 +198,7 @@ function SettingsContent() {
   const [saveHover, setSaveHover] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [keywordError, setKeywordError] = useState<string | null>(null);
+  const [subredditError, setSubredditError] = useState<string | null>(null);
 
   const [productDesc, setProductDesc] = useState("");
   const [target, setTarget] = useState("");
@@ -356,6 +357,7 @@ function SettingsContent() {
   const btnMinWidth = isMobile ? "unset" : "160px";
 
   const keywordLimit = getKeywordLimit(currentPlan);
+  const subredditLimit = getSubredditLimit(currentPlan);
 
   const isDirty = useMemo(() => {
     if (!initialSnapshot) return false;
@@ -416,7 +418,19 @@ function SettingsContent() {
 
   function addSubreddit() {
     const value = subredditInput.trim().replace(/^r\//, "");
-    if (!value || subreddits.includes(value)) return;
+    setSubredditError(null);
+    if (!value) {
+      setSubredditError("Le subreddit ne peut pas être vide.");
+      return;
+    }
+    if (subreddits.includes(value)) {
+      setSubredditError("Ce subreddit existe déjà.");
+      return;
+    }
+    if (subreddits.length >= subredditLimit) {
+      setSubredditError("Limite de subreddits atteinte pour votre plan.");
+      return;
+    }
     setSubreddits((prev) => [...prev, value]);
     setSubredditInput("");
   }
@@ -891,6 +905,44 @@ function SettingsContent() {
             {renderBadges(subreddits, (item) =>
               setSubreddits((prev) => prev.filter((s) => s !== item))
             )}
+            <div style={{ marginTop: "12px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: "12px",
+                  color: colors.textMuted,
+                  marginBottom: "6px",
+                }}
+              >
+                <span>
+                  {subreddits.length} / {subredditLimit} subreddits
+                </span>
+              </div>
+              <div
+                style={{
+                  height: "6px",
+                  background: colors.border,
+                  borderRadius: "3px",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${Math.min(100, (subreddits.length / subredditLimit) * 100)}%`,
+                    background:
+                      subreddits.length >= subredditLimit ? "#DC2626" : colors.accent,
+                    borderRadius: "3px",
+                  }}
+                />
+              </div>
+              {subredditError && (
+                <p style={{ margin: "8px 0 0", fontSize: "13px", color: "#DC2626" }}>
+                  {subredditError}
+                </p>
+              )}
+            </div>
           </div>
 
           <button

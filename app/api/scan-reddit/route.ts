@@ -12,7 +12,7 @@ const REDDIT_RATE_LIMIT_RETRY_MS = 5000;
 const MAX_SCAN_COMBINATIONS = 8;
 const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
-const MIN_INTENT_SCORE_TO_INSERT = 15;
+const MIN_INTENT_SCORE_TO_INSERT = 25;
 
 const DEFAULT_KEYWORDS = ["B2B", "prospecting", "lead generation"];
 const DEFAULT_SUBREDDITS = ["entrepreneur", "SaaS", "smallbusiness"];
@@ -36,6 +36,24 @@ type IntentResult = {
   score: number;
   reason: string;
 };
+
+type ScoredPost = RedditPost & { intentScore: number };
+
+function dedupeByTitle(posts: ScoredPost[]): ScoredPost[] {
+  const byTitle = new Map<string, ScoredPost>();
+
+  for (const post of posts) {
+    const key = post.title.toLowerCase().trim();
+    if (!key) continue;
+
+    const existing = byTitle.get(key);
+    if (!existing || post.intentScore > existing.intentScore) {
+      byTitle.set(key, post);
+    }
+  }
+
+  return Array.from(byTitle.values());
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -264,6 +282,12 @@ Titre : ${post.title}
 Contenu : ${post.selftext || ""}
 
 Donne un Intent Score de 0 à 100 (100 = cherche activement une solution).
+
+Règles de scoring :
+- Score > 70 uniquement si intention d'achat explicite : cherche un outil, compare des solutions, demande des recommandations.
+- Score < 40 si partage d'expérience, storytelling ou article de blog sans demande claire.
+- Si le post est un article de blog, un témoignage ou un partage d'expérience sans demande explicite d'outil, donne un score inférieur à 30.
+
 Réponds UNIQUEMENT avec ce JSON sans texte autour :
 {"score": 75, "reason": "L'auteur cherche activement un outil de prospection"}`,
         },
@@ -527,6 +551,7 @@ export async function POST() {
   let insertCount = 0;
   let scoredCount = 0;
   let belowThreshold = 0;
+  const scoredAboveThreshold: ScoredPost[] = [];
 
   for (let i = 0; i < postsToScore.length; i++) {
     const post = postsToScore[i];
@@ -554,6 +579,16 @@ export async function POST() {
       continue;
     }
 
+    scoredAboveThreshold.push({ ...post, intentScore });
+  }
+
+  const postsToInsert = dedupeByTitle(scoredAboveThreshold);
+  console.log("TITLE DEDUP:", {
+    before: scoredAboveThreshold.length,
+    after: postsToInsert.length,
+  });
+
+  for (const post of postsToInsert) {
     console.log("INSERTING LEADS FOR USER:", userId);
     const { data: inserted, error: insertError } = await supabase.from("leads").upsert(
       {
@@ -564,7 +599,7 @@ export async function POST() {
         post_url: post.url,
         subreddit: post.subreddit,
         author: post.author,
-        intent_score: intentScore,
+        intent_score: post.intentScore,
         status: "new",
       },
       {
