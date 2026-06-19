@@ -18,7 +18,6 @@ const CLAUDE_DELAY_MS = 500;
 const REDDIT_REQUEST_DELAY_MS = 500;
 const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
 const MAX_COMBINATIONS_PER_SCAN = 20;
-const REDDIT_USER_AGENT = "LeadHunterAI/1.0 (by /u/leadhunterai)";
 const MIN_INTENT_SCORE_TO_INSERT = 25;
 
 type ScanCombination = { subreddit: string; keyword: string };
@@ -131,104 +130,41 @@ async function fetchUserConfig(
   }
 }
 
-async function getRedditAccessToken(logs: ScanLogs): Promise<string | null> {
-  const clientId = process.env.REDDIT_CLIENT_ID;
-  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
-  const username = process.env.REDDIT_USERNAME;
-  const password = process.env.REDDIT_PASSWORD;
+async function searchReddit(subreddit: string, keyword: string) {
+  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=1&sort=new&limit=25&t=week`;
 
-  if (!clientId || !clientSecret || !username || !password) {
-    logError(logs, "Reddit OAuth credentials incomplets");
-    return null;
-  }
-
-  try {
-    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-    const tokenRes = await fetch("https://www.reddit.com/api/v1/access_token", {
-      method: "POST",
+  const fetchOnce = () =>
+    fetch(url, {
       headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": REDDIT_USER_AGENT,
+        "User-Agent": "Mozilla/5.0 (compatible; LeadHunterAI/1.0)",
       },
-      body:
-        "grant_type=password&username=" +
-        encodeURIComponent(username) +
-        "&password=" +
-        encodeURIComponent(password),
+      cache: "no-store",
     });
 
-    const tokenText = await tokenRes.text();
-    logDebug(logs, `Reddit token status: ${tokenRes.status}`);
+  let response = await fetchOnce();
 
-    if (!tokenRes.ok) {
-      logError(logs, `Reddit token error: ${tokenRes.status} ${tokenText.slice(0, 200)}`);
-      return null;
-    }
-
-    const { access_token } = JSON.parse(tokenText) as { access_token?: string };
-    if (!access_token) {
-      logError(logs, "Reddit token response sans access_token");
-      return null;
-    }
-
-    logDebug(logs, "Reddit OAuth token obtenu");
-    return access_token;
-  } catch (err) {
-    logError(logs, `Reddit token exception: ${String(err)}`);
-    return null;
+  if (response.status === 429) {
+    await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
+    response = await fetchOnce();
   }
+
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  return data?.data?.children?.map((child: { data?: Record<string, unknown> }) => child.data) || [];
 }
 
 async function fetchRedditPosts(
   subreddit: string,
   keyword: string,
-  accessToken: string,
   logs: ScanLogs
 ): Promise<RedditPost[]> {
   logDebug(logs, `Scanning r/${subreddit} keyword="${keyword}"`);
 
   try {
-    const url = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/search?q=${encodeURIComponent(keyword)}&sort=new&limit=25&t=month&restrict_sr=1`;
+    const rawPosts = await searchReddit(subreddit, keyword);
 
-    let searchRes = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "User-Agent": REDDIT_USER_AGENT,
-      },
-      cache: "no-store",
-    });
-
-    logDebug(logs, `Reddit r/${subreddit} "${keyword}" → status ${searchRes.status}`);
-
-    if (searchRes.status === 429) {
-      logDebug(logs, `Reddit 429 — retry dans ${REDDIT_RATE_LIMIT_RETRY_MS}ms`);
-      await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
-      searchRes = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "User-Agent": REDDIT_USER_AGENT,
-        },
-        cache: "no-store",
-      });
-      logDebug(logs, `Reddit retry r/${subreddit} "${keyword}" → status ${searchRes.status}`);
-    }
-
-    const text = await searchRes.text();
-
-    if (!searchRes.ok) {
-      logError(
-        logs,
-        `Reddit API error r/${subreddit}/${keyword}: ${searchRes.status} ${text.slice(0, 200)}`
-      );
-      return [];
-    }
-
-    const data = JSON.parse(text);
-    const children = data?.data?.children ?? [];
-
-    const posts = children
-      .map((child: { data?: Record<string, unknown> }) => child.data)
+    const posts = rawPosts
       .filter(Boolean)
       .map((postData: Record<string, unknown>) => ({
         title: String(postData.title ?? ""),
@@ -238,7 +174,8 @@ async function fetchRedditPosts(
         subreddit: String(postData.subreddit ?? subreddit),
         author: String(postData.author ?? ""),
         created_utc: Number(postData.created_utc ?? 0),
-      }));
+      }))
+      .filter((p) => p.title && p.permalink);
 
     logDebug(logs, `Posts found for r/${subreddit} "${keyword}": ${posts.length}`);
 
@@ -347,31 +284,6 @@ export async function scanRedditForUser(
       `Config: ${config.subreddits.length} subreddits, ${config.keywords.length} keywords`
     );
 
-    if (
-      !process.env.REDDIT_CLIENT_ID?.trim() ||
-      !process.env.REDDIT_CLIENT_SECRET?.trim() ||
-      !process.env.REDDIT_USERNAME?.trim() ||
-      !process.env.REDDIT_PASSWORD?.trim()
-    ) {
-      logError(logs, "Reddit API non configurée");
-      return {
-        success: false,
-        error: "Reddit API non configurée",
-        errors: errorLog,
-        debug: debugLog,
-      };
-    }
-
-    const accessToken = await getRedditAccessToken(logs);
-    if (!accessToken) {
-      return {
-        success: false,
-        error: "Impossible d'obtenir le token Reddit OAuth",
-        errors: errorLog,
-        debug: debugLog,
-      };
-    }
-
     const combinations = pickScanCombinations(
       config.subreddits,
       config.keywords,
@@ -388,12 +300,7 @@ export async function scanRedditForUser(
 
     for (const combo of combinations) {
       redditFetchCount++;
-      const posts = await fetchRedditPosts(
-        combo.subreddit,
-        combo.keyword,
-        accessToken,
-        logs
-      );
+      const posts = await fetchRedditPosts(combo.subreddit, combo.keyword, logs);
       redditPostsTotal += posts.length;
 
       for (const post of posts) {
