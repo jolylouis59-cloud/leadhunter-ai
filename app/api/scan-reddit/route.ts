@@ -6,7 +6,7 @@ const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
 const MAX_COMBINATIONS_PER_SCAN = 20;
 const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
-const MIN_INTENT_SCORE_TO_INSERT = 20;
+const MIN_INTENT_SCORE_TO_INSERT = 15;
 
 const DEFAULT_KEYWORDS = [
   "trouver des clients B2B",
@@ -274,7 +274,8 @@ Réponds UNIQUEMENT avec ce JSON sans texte autour :
 
 async function scanSingleCombination(
   subreddit: string,
-  keyword: string
+  keyword: string,
+  errors: string[]
 ): Promise<{ posts: RedditPost[]; succeeded: boolean; status: number }> {
   const ctx = { subreddit, keyword };
   console.log("REDDIT JSON SEARCH:", ctx);
@@ -289,12 +290,17 @@ async function scanSingleCombination(
     console.log(`[SCAN] r/${subreddit} "${keyword}" → ${posts.length} posts trouvés`);
     return { posts, succeeded: true, status: 200 };
   } catch (err) {
+    const message = `Erreur r/${subreddit} "${keyword}": ${String(err)}`;
     console.error("REDDIT JSON ERROR:", { ...ctx, error: String(err) });
+    errors.push(message);
     return { posts: [], succeeded: false, status: 500 };
   }
 }
 
-async function scanWithRateLimit(combinations: ScanCombination[]): Promise<{
+async function scanWithRateLimit(
+  combinations: ScanCombination[],
+  errors: string[]
+): Promise<{
   allPosts: RedditPost[];
   combinationsAttempted: number;
   combinationsSucceeded: number;
@@ -307,7 +313,12 @@ async function scanWithRateLimit(combinations: ScanCombination[]): Promise<{
     combinationsAttempted++;
 
     try {
-      const result = await scanSingleCombination(combo.subreddit, combo.keyword);
+      const result = await scanSingleCombination(combo.subreddit, combo.keyword, errors);
+      if (!result.succeeded) {
+        errors.push(
+          `Échec scan r/${combo.subreddit} "${combo.keyword}" (status ${result.status})`
+        );
+      }
       if (result.succeeded) combinationsSucceeded++;
       for (const post of result.posts) {
         if (!postsMap.has(post.url)) postsMap.set(post.url, post);
@@ -317,16 +328,25 @@ async function scanWithRateLimit(combinations: ScanCombination[]): Promise<{
       if (status === 429) {
         await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
         try {
-          const retry = await scanSingleCombination(combo.subreddit, combo.keyword);
+          const retry = await scanSingleCombination(combo.subreddit, combo.keyword, errors);
+          if (!retry.succeeded) {
+            errors.push(
+              `Échec retry r/${combo.subreddit} "${combo.keyword}" (status ${retry.status})`
+            );
+          }
           if (retry.succeeded) combinationsSucceeded++;
           for (const post of retry.posts) {
             if (!postsMap.has(post.url)) postsMap.set(post.url, post);
           }
         } catch (e) {
-          console.error("Combinaison abandonnée après retry:", combo, e);
+          const message = `Combinaison abandonnée après retry r/${combo.subreddit} "${combo.keyword}": ${String(e)}`;
+          console.error(message, combo, e);
+          errors.push(message);
         }
       } else {
-        console.error("Scan combinaison erreur:", combo, error);
+        const message = `Scan combinaison erreur r/${combo.subreddit} "${combo.keyword}": ${String(error)}`;
+        console.error(message, combo, error);
+        errors.push(message);
       }
     }
 
@@ -342,7 +362,10 @@ async function scanWithRateLimit(combinations: ScanCombination[]): Promise<{
   };
 }
 
-export async function POST() {
+export async function POST(req: Request) {
+  const debug = new URL(req.url).searchParams.get("debug") === "true";
+  const scanErrors: string[] = [];
+
   const supabase = createClient();
 
   const {
@@ -360,10 +383,13 @@ export async function POST() {
   const userId = user.id;
 
   const config = await fetchUserConfig(supabase, userId);
+  const { keywords, subreddits } = config;
+
+  console.log("[SCAN START] keywords:", keywords, "subreddits:", subreddits);
 
   const combinations = pickScanCombinations(
-    config.subreddits,
-    config.keywords,
+    subreddits,
+    keywords,
     MAX_COMBINATIONS_PER_SCAN
   );
 
@@ -375,7 +401,7 @@ export async function POST() {
   });
 
   const { allPosts, combinationsAttempted, combinationsSucceeded } =
-    await scanWithRateLimit(combinations);
+    await scanWithRateLimit(combinations, scanErrors);
   const postUrls = allPosts.map((p) => p.url);
 
   let existingUrls = new Set<string>();
@@ -388,6 +414,8 @@ export async function POST() {
 
     if (!dupError && existing) {
       existingUrls = new Set(existing.map((r: any) => r.post_url).filter(Boolean));
+    } else if (dupError) {
+      scanErrors.push(`Erreur dédoublonnage: ${dupError.message}`);
     }
   }
 
@@ -398,6 +426,7 @@ export async function POST() {
   let scoredCount = 0;
   let belowThreshold = 0;
   const scoredAboveThreshold: ScoredPost[] = [];
+  const samplePosts: { title: string; subreddit: string; score: number; url: string }[] = [];
 
   for (let i = 0; i < postsToScore.length; i++) {
     const post = postsToScore[i];
@@ -409,11 +438,21 @@ export async function POST() {
 
     if (!intent) {
       console.log("CLAUDE NO INTENT:", { title: post.title, url: post.url });
+      scanErrors.push(`Claude sans score: "${post.title?.substring(0, 50)}"`);
       continue;
     }
 
     const intentScore = intent.score;
     console.log(`[SCORE] Post "${post.title?.substring(0, 50)}" → score: ${intentScore}`);
+
+    if (samplePosts.length < 3) {
+      samplePosts.push({
+        title: post.title,
+        subreddit: post.subreddit,
+        score: intentScore,
+        url: post.url,
+      });
+    }
 
     const willInsert = intentScore >= MIN_INTENT_SCORE_TO_INSERT;
 
@@ -464,6 +503,7 @@ export async function POST() {
     });
 
     if (insertError) {
+      const message = `Insert échoué "${post.title?.substring(0, 50)}": ${insertError.message}`;
       console.error("INSERT ERROR:", {
         postUrl: post.url,
         title: post.title,
@@ -472,6 +512,7 @@ export async function POST() {
         details: insertError.details,
         hint: insertError.hint,
       });
+      scanErrors.push(message);
     } else {
       insertCount++;
     }
@@ -491,7 +532,7 @@ export async function POST() {
 
   console.log("SCAN SUMMARY:", scanSummary);
 
-  return NextResponse.json({
+  const responseBody: Record<string, unknown> = {
     success: true,
     leadsFound: insertCount,
     postsScanned: totalPosts,
@@ -500,5 +541,17 @@ export async function POST() {
         ? `${insertCount} leads trouvés`
         : "Aucun lead au-dessus du seuil",
     ...scanSummary,
-  });
+  };
+
+  if (debug) {
+    responseBody.debug = {
+      combinationsScanned: combinationsAttempted,
+      postsFound: allPosts.length,
+      postsAboveThreshold: scoredAboveThreshold.length,
+      samplePosts,
+      errors: scanErrors,
+    };
+  }
+
+  return NextResponse.json(responseBody);
 }
