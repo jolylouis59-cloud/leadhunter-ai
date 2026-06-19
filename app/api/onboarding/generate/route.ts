@@ -32,12 +32,13 @@ function buildUserPrompt(profile: OnboardingProfile): string {
     .filter(Boolean)
     .join(". ");
 
-  return `Génère 15 mots-clés en FRANÇAIS pour trouver des prospects qui correspondent à ce profil : ${profilParts}. Les mots-clés doivent être des expressions naturelles en français, pas des traductions de l'anglais.
+  return `Génère exactement 5 mots-clés en FRANÇAIS pour trouver des prospects qui correspondent à ce profil : ${profilParts}. Les mots-clés doivent être des expressions naturelles en français, pas des traductions de l'anglais.
 
-Génère aussi 8 à 10 subreddits pertinents (sans le préfixe r/), en priorisant les communautés francophones : FrenchStartup, france_startup, Entrepreneur_Francophone, freelance_france, marketing_france, webdev_fr, ainsi que SaaS, startups, Entrepreneur.
+Génère aussi exactement 3 subreddits pertinents (sans le préfixe r/), en priorisant les communautés francophones : FrenchStartup, Entrepreneur_Francophone, SaaS.
 
 RÈGLES :
-- 15 à 20 mots-clés variés, formulations naturelles en français uniquement
+- Exactement 5 mots-clés, formulations naturelles en français uniquement
+- Exactement 3 subreddits
 - Pas de doublons, pas de hashtags
 - Subreddits sans préfixe r/
 
@@ -119,10 +120,12 @@ export async function POST(req: Request) {
     const parsed = JSON.parse(jsonMatch[0]) as GeneratedConfig;
     const keywords = (parsed.keywords ?? [])
       .map((k) => String(k).trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .slice(0, 5);
     const subreddits = (parsed.subreddits ?? [])
       .map((s) => String(s).trim().replace(/^r\//i, ""))
-      .filter(Boolean);
+      .filter(Boolean)
+      .slice(0, 3);
 
     if (keywords.length === 0 || subreddits.length === 0) {
       return NextResponse.json(

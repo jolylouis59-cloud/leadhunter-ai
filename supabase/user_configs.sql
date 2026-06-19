@@ -2,8 +2,8 @@ create table if not exists public.user_configs (
   user_id uuid primary key references auth.users(id) on delete cascade,
   product_description text not null default 'outil de prospection B2B automatisé',
   target text not null default 'founders, solopreneurs, agences marketing',
-  keywords text[] not null default array['trouver des clients B2B', 'prospection sans cold email', 'comment trouver des clients', 'outil prospection automatique', 'alternative cold email'],
-  subreddits text[] not null default array['SaaS', 'entrepreneur', 'startups', 'marketing', 'Entrepreneur_Ride_Along'],
+  keywords text[] not null default array['trouver des clients B2B', 'prospection sans cold email', 'comment trouver des clients', 'outil prospection', 'alternative cold email'],
+  subreddits text[] not null default array['FrenchStartup', 'Entrepreneur_Francophone', 'SaaS'],
   updated_at timestamptz not null default now()
 );
 

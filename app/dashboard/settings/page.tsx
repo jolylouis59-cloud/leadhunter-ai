@@ -25,31 +25,11 @@ const DEFAULT_KEYWORDS = [
   "trouver des clients B2B",
   "prospection sans cold email",
   "comment trouver des clients",
-  "outil prospection automatique",
+  "outil prospection",
   "alternative cold email",
-  "générer des leads B2B",
-  "acquisition clients SaaS",
-  "trouver prospects qualifiés",
-  "croissance startup française",
-  "comment vendre son SaaS",
-  "cherche outil prospection",
-  "automatiser sa prospection",
-  "trouver clients sans pub",
-  "growth hacking France",
-  "prospection LinkedIn alternative",
 ];
 
-const DEFAULT_SUBREDDITS = [
-  "FrenchStartup",
-  "france_startup",
-  "Entrepreneur_Francophone",
-  "freelance_france",
-  "marketing_france",
-  "webdev_fr",
-  "SaaS",
-  "startups",
-  "Entrepreneur",
-];
+const DEFAULT_SUBREDDITS = ["FrenchStartup", "Entrepreneur_Francophone", "SaaS"];
 
 const ANNUAL_PRICE_IDS: Record<string, string> = {
   starter: process.env.NEXT_PUBLIC_STRIPE_STARTER_ANNUAL_PRICE_ID ?? "",

@@ -3,13 +3,12 @@ import { XMLParser } from "fast-xml-parser";
 import { createClient } from "@/lib/supabase-server";
 
 const REDDIT_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  "User-Agent": "LeadHunterAI/1.0 (by /u/leadhunterai)",
   Accept: "application/rss+xml, application/xml, text/xml, */*",
 };
-const REDDIT_REQUEST_DELAY_MS = 3000;
-const REDDIT_RATE_LIMIT_RETRY_MS = 5000;
-const MAX_SCAN_COMBINATIONS = 8;
+const REDDIT_REQUEST_DELAY_MS = 500;
+const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
+const MAX_COMBINATIONS_PER_SCAN = 20;
 const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
 const MIN_INTENT_SCORE_TO_INSERT = 25;
@@ -18,30 +17,10 @@ const DEFAULT_KEYWORDS = [
   "trouver des clients B2B",
   "prospection sans cold email",
   "comment trouver des clients",
-  "outil prospection automatique",
+  "outil prospection",
   "alternative cold email",
-  "générer des leads B2B",
-  "acquisition clients SaaS",
-  "trouver prospects qualifiés",
-  "croissance startup française",
-  "comment vendre son SaaS",
-  "cherche outil prospection",
-  "automatiser sa prospection",
-  "trouver clients sans pub",
-  "growth hacking France",
-  "prospection LinkedIn alternative",
 ];
-const DEFAULT_SUBREDDITS = [
-  "FrenchStartup",
-  "france_startup",
-  "Entrepreneur_Francophone",
-  "freelance_france",
-  "marketing_france",
-  "webdev_fr",
-  "SaaS",
-  "startups",
-  "Entrepreneur",
-];
+const DEFAULT_SUBREDDITS = ["FrenchStartup", "Entrepreneur_Francophone", "SaaS"];
 
 type UserConfig = {
   product_description: string;
@@ -123,10 +102,6 @@ function isFrenchKeyword(keyword: string): boolean {
   return false;
 }
 
-function combinationKey(c: ScanCombination): string {
-  return `${c.subreddit.toLowerCase()}::${c.keyword.toLowerCase()}`;
-}
-
 function shuffleInPlace<T>(arr: T[]): void {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -134,124 +109,51 @@ function shuffleInPlace<T>(arr: T[]): void {
   }
 }
 
-function combinationWeight(c: ScanCombination): number {
-  let weight = 1;
-  if (isFrancophoneSubreddit(c.subreddit)) weight *= 2;
-  if (isFrenchKeyword(c.keyword)) weight *= 2;
-  return weight;
-}
-
 function isFrancophoneTargeted(c: ScanCombination): boolean {
   return isFrancophoneSubreddit(c.subreddit) || isFrenchKeyword(c.keyword);
 }
 
-function weightedPickOne(
-  items: ScanCombination[],
-  weightFn: (c: ScanCombination) => number
-): ScanCombination {
-  const total = items.reduce((sum, item) => sum + weightFn(item), 0);
-  let r = Math.random() * total;
-  for (const item of items) {
-    r -= weightFn(item);
-    if (r <= 0) return item;
-  }
-  return items[items.length - 1];
-}
-
-function pickRandomCombinations(
+function pickScanCombinations(
   subreddits: string[],
   keywords: string[],
   max: number
 ): ScanCombination[] {
-  const all: ScanCombination[] = [];
-  for (const subreddit of subreddits) {
-    for (const keyword of keywords) {
-      all.push({ subreddit, keyword });
-    }
-  }
+  const all: ScanCombination[] = keywords.flatMap((keyword) =>
+    subreddits.map((subreddit) => ({ subreddit, keyword }))
+  );
 
   if (all.length <= max) return all;
 
-  const frFrancophone = all.filter(
-    (c) => isFrancophoneSubreddit(c.subreddit) && isFrenchKeyword(c.keyword)
-  );
-  const frPartial = all.filter(
-    (c) =>
-      isFrancophoneTargeted(c) &&
-      !(isFrancophoneSubreddit(c.subreddit) && isFrenchKeyword(c.keyword))
-  );
-  const selected: ScanCombination[] = [];
-  const used = new Set<string>();
+  const francophone = all.filter(isFrancophoneTargeted);
+  const others = all.filter((c) => !isFrancophoneTargeted(c));
+  shuffleInPlace(francophone);
+  shuffleInPlace(others);
 
-  const francophoneTarget = Math.min(max, Math.max(4, Math.ceil(max * 0.625)));
-
-  const takeFrom = (pool: ScanCombination[]) => {
-    shuffleInPlace(pool);
-    for (const combo of pool) {
-      if (selected.length >= francophoneTarget) break;
-      const key = combinationKey(combo);
-      if (used.has(key)) continue;
-      selected.push(combo);
-      used.add(key);
-    }
-  };
-
-  takeFrom(frFrancophone);
-  takeFrom(frPartial);
-
-  const remaining = all.filter((c) => !used.has(combinationKey(c)));
-  while (selected.length < max && remaining.length > 0) {
-    const picked = weightedPickOne(remaining, combinationWeight);
-    const key = combinationKey(picked);
-    selected.push(picked);
-    used.add(key);
-    const idx = remaining.findIndex((c) => combinationKey(c) === key);
-    if (idx >= 0) remaining.splice(idx, 1);
-  }
-
-  return selected;
+  const picked = [...francophone, ...others].slice(0, max);
+  shuffleInPlace(picked);
+  return picked;
 }
 
 async function fetchRedditRssText(
   url: string,
   ctx: { subreddit: string; keyword: string }
 ): Promise<{ text: string | null; status: number }> {
-  const attempt = async (): Promise<{ text: string; status: number }> => {
-    const res = await fetch(url, {
-      headers: REDDIT_HEADERS,
-      cache: "no-store",
-    });
-    const text = await res.text();
-    return { text, status: res.status };
-  };
+  const res = await fetch(url, {
+    headers: REDDIT_HEADERS,
+    cache: "no-store",
+  });
+  const text = await res.text();
 
-  let { text, status } = await attempt();
-
-  if (status === 429) {
-    console.log("REDDIT 429 — retry dans 5s:", { ...ctx, url });
-    await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
-    ({ text, status } = await attempt());
-  }
-
-  if (status === 429) {
-    console.error("REDDIT 429 après retry — combinaison abandonnée:", {
-      ...ctx,
-      url,
-    });
-    return { text: null, status };
-  }
-
-  if (!status || status < 200 || status >= 300) {
+  if (!res.ok) {
     console.error("REDDIT RSS ERROR:", {
       ...ctx,
       url,
-      status,
-      bodyPreview: text.slice(0, 1000),
+      status: res.status,
+      bodyPreview: text.slice(0, 500),
     });
-    return { text: null, status };
   }
 
-  return { text, status };
+  return { text: res.ok ? text : null, status: res.status };
 }
 
 async function fetchUserConfig(supabase: ReturnType<typeof createClient>, userId: string) {
@@ -442,10 +344,10 @@ function parseRssFeed(xml: string, subreddit: string): RedditPost[] {
     .filter((p) => p.title && p.url);
 }
 
-async function fetchPublicRedditPosts(
+async function scanSingleCombination(
   subreddit: string,
   keyword: string
-): Promise<{ posts: RedditPost[]; succeeded: boolean }> {
+): Promise<{ posts: RedditPost[]; succeeded: boolean; status: number }> {
   const ctx = { subreddit, keyword };
   const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.rss?q=${encodeURIComponent(
     keyword
@@ -453,10 +355,19 @@ async function fetchPublicRedditPosts(
 
   console.log("REDDIT RSS URL CALLED:", { ...ctx, url });
 
-  const { text, status } = await fetchRedditRssText(url, ctx);
+  let { text, status } = await fetchRedditRssText(url, ctx);
 
-  if (!text) {
-    return { posts: [], succeeded: false };
+  if (status === 429) {
+    console.log("REDDIT 429 — retry dans 2s:", { ...ctx, url });
+    await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
+    ({ text, status } = await fetchRedditRssText(url, ctx));
+  }
+
+  if (status === 429 || !text) {
+    if (status === 429) {
+      console.error("REDDIT 429 après retry — combinaison abandonnée:", { ...ctx, url });
+    }
+    return { posts: [], succeeded: false, status };
   }
 
   if (!text.includes("<") || (!text.includes("<feed") && !text.includes("<rss"))) {
@@ -466,26 +377,13 @@ async function fetchPublicRedditPosts(
       status,
       bodyPreview: text.slice(0, 500),
     });
-    return { posts: [], succeeded: false };
+    return { posts: [], succeeded: false, status };
   }
 
   try {
     const posts = parseRssFeed(text, subreddit);
-
-    console.log("REDDIT POSTS COUNT:", {
-      ...ctx,
-      url,
-      postsReturned: posts.length,
-    });
-
-    if (posts.length === 0) {
-      console.error("REDDIT EMPTY RSS:", {
-        ...ctx,
-        responsePreview: text.slice(0, 1000),
-      });
-    }
-
-    return { posts, succeeded: true };
+    console.log("REDDIT POSTS COUNT:", { ...ctx, url, postsReturned: posts.length });
+    return { posts, succeeded: true, status };
   } catch (err) {
     console.error("REDDIT RSS PARSE ERROR:", {
       ...ctx,
@@ -493,8 +391,56 @@ async function fetchPublicRedditPosts(
       error: String(err),
       bodyPreview: text.slice(0, 500),
     });
-    return { posts: [], succeeded: false };
+    return { posts: [], succeeded: false, status };
   }
+}
+
+async function scanWithRateLimit(combinations: ScanCombination[]): Promise<{
+  allPosts: RedditPost[];
+  combinationsAttempted: number;
+  combinationsSucceeded: number;
+}> {
+  const postsMap = new Map<string, RedditPost>();
+  let combinationsAttempted = 0;
+  let combinationsSucceeded = 0;
+
+  for (const combo of combinations) {
+    combinationsAttempted++;
+
+    try {
+      const result = await scanSingleCombination(combo.subreddit, combo.keyword);
+      if (result.succeeded) combinationsSucceeded++;
+      for (const post of result.posts) {
+        if (!postsMap.has(post.url)) postsMap.set(post.url, post);
+      }
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 429) {
+        await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
+        try {
+          const retry = await scanSingleCombination(combo.subreddit, combo.keyword);
+          if (retry.succeeded) combinationsSucceeded++;
+          for (const post of retry.posts) {
+            if (!postsMap.has(post.url)) postsMap.set(post.url, post);
+          }
+        } catch (e) {
+          console.error("Combinaison abandonnée après retry:", combo, e);
+        }
+      } else {
+        console.error("Scan combinaison erreur:", combo, error);
+      }
+    }
+
+    if (combinationsAttempted < combinations.length) {
+      await sleep(REDDIT_REQUEST_DELAY_MS);
+    }
+  }
+
+  return {
+    allPosts: Array.from(postsMap.values()),
+    combinationsAttempted,
+    combinationsSucceeded,
+  };
 }
 
 export async function POST() {
@@ -516,46 +462,21 @@ export async function POST() {
 
   const config = await fetchUserConfig(supabase, userId);
 
-  const postsMap = new Map<string, RedditPost>();
-  const combinations = pickRandomCombinations(
+  const combinations = pickScanCombinations(
     config.subreddits,
     config.keywords,
-    MAX_SCAN_COMBINATIONS
+    MAX_COMBINATIONS_PER_SCAN
   );
-
-  let combinationsAttempted = 0;
-  let combinationsSucceeded = 0;
 
   console.log("SCAN COMBINATIONS SELECTED:", {
     total: combinations.length,
-    max: MAX_SCAN_COMBINATIONS,
+    max: MAX_COMBINATIONS_PER_SCAN,
     francophoneTargeted: combinations.filter(isFrancophoneTargeted).length,
-    frSubredditAndFrKeyword: combinations.filter(
-      (c) => isFrancophoneSubreddit(c.subreddit) && isFrenchKeyword(c.keyword)
-    ).length,
-    pairs: combinations.map((c) => {
-      const frSub = isFrancophoneSubreddit(c.subreddit);
-      const frKw = isFrenchKeyword(c.keyword);
-      const tag = frSub && frKw ? "FR×FR" : frSub || frKw ? "FR" : "EN";
-      return `[${tag}] r/${c.subreddit} + "${c.keyword}"`;
-    }),
+    pairs: combinations.map((c) => `r/${c.subreddit} + "${c.keyword}"`),
   });
 
-  for (const { subreddit, keyword } of combinations) {
-    combinationsAttempted++;
-    const { posts, succeeded } = await fetchPublicRedditPosts(subreddit, keyword);
-    if (succeeded) combinationsSucceeded++;
-
-    for (const post of posts) {
-      if (!postsMap.has(post.url)) postsMap.set(post.url, post);
-    }
-
-    if (combinationsAttempted < combinations.length) {
-      await sleep(REDDIT_REQUEST_DELAY_MS);
-    }
-  }
-
-  const allPosts = Array.from(postsMap.values());
+  const { allPosts, combinationsAttempted, combinationsSucceeded } =
+    await scanWithRateLimit(combinations);
   const postUrls = allPosts.map((p) => p.url);
 
   let existingUrls = new Set<string>();

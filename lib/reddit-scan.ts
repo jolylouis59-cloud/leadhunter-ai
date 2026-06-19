@@ -7,37 +7,41 @@ const DEFAULT_CONFIG = {
     "trouver des clients B2B",
     "prospection sans cold email",
     "comment trouver des clients",
-    "outil prospection automatique",
+    "outil prospection",
     "alternative cold email",
-    "générer des leads B2B",
-    "acquisition clients SaaS",
-    "trouver prospects qualifiés",
-    "croissance startup française",
-    "comment vendre son SaaS",
-    "cherche outil prospection",
-    "automatiser sa prospection",
-    "trouver clients sans pub",
-    "growth hacking France",
-    "prospection LinkedIn alternative",
   ],
-  subreddits: [
-    "FrenchStartup",
-    "france_startup",
-    "Entrepreneur_Francophone",
-    "freelance_france",
-    "marketing_france",
-    "webdev_fr",
-    "SaaS",
-    "startups",
-    "Entrepreneur",
-  ],
+  subreddits: ["FrenchStartup", "Entrepreneur_Francophone", "SaaS"],
 };
 
 const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
-const REDDIT_REQUEST_DELAY_MS = 1000;
-const REDDIT_USER_AGENT = "LeadHunterAI/1.0 by Beginning_Brain_8050";
+const REDDIT_REQUEST_DELAY_MS = 500;
+const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
+const MAX_COMBINATIONS_PER_SCAN = 20;
+const REDDIT_USER_AGENT = "LeadHunterAI/1.0 (by /u/leadhunterai)";
 const MIN_INTENT_SCORE_TO_INSERT = 25;
+
+type ScanCombination = { subreddit: string; keyword: string };
+
+function shuffleInPlace<T>(arr: T[]): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+function pickScanCombinations(
+  subreddits: string[],
+  keywords: string[],
+  max: number
+): ScanCombination[] {
+  const all: ScanCombination[] = keywords.flatMap((keyword) =>
+    subreddits.map((subreddit) => ({ subreddit, keyword }))
+  );
+  if (all.length <= max) return all;
+  shuffleInPlace(all);
+  return all.slice(0, max);
+}
 
 type UserConfig = {
   product_description: string;
@@ -187,7 +191,7 @@ async function fetchRedditPosts(
   try {
     const url = `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/search?q=${encodeURIComponent(keyword)}&sort=new&limit=25&t=month&restrict_sr=1`;
 
-    const searchRes = await fetch(url, {
+    let searchRes = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "User-Agent": REDDIT_USER_AGENT,
@@ -196,6 +200,19 @@ async function fetchRedditPosts(
     });
 
     logDebug(logs, `Reddit r/${subreddit} "${keyword}" → status ${searchRes.status}`);
+
+    if (searchRes.status === 429) {
+      logDebug(logs, `Reddit 429 — retry dans ${REDDIT_RATE_LIMIT_RETRY_MS}ms`);
+      await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
+      searchRes = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "User-Agent": REDDIT_USER_AGENT,
+        },
+        cache: "no-store",
+      });
+      logDebug(logs, `Reddit retry r/${subreddit} "${keyword}" → status ${searchRes.status}`);
+    }
 
     const text = await searchRes.text();
 
@@ -355,25 +372,40 @@ export async function scanRedditForUser(
       };
     }
 
+    const combinations = pickScanCombinations(
+      config.subreddits,
+      config.keywords,
+      MAX_COMBINATIONS_PER_SCAN
+    );
+    logDebug(
+      logs,
+      `Scanning ${combinations.length} combinaisons (max ${MAX_COMBINATIONS_PER_SCAN})`
+    );
+
     const postsMap = new Map<string, RedditPost>();
     let redditFetchCount = 0;
     let redditPostsTotal = 0;
 
-    for (const subreddit of config.subreddits) {
-      for (const keyword of config.keywords) {
-        redditFetchCount++;
-        const posts = await fetchRedditPosts(subreddit, keyword, accessToken, logs);
-        redditPostsTotal += posts.length;
+    for (const combo of combinations) {
+      redditFetchCount++;
+      const posts = await fetchRedditPosts(
+        combo.subreddit,
+        combo.keyword,
+        accessToken,
+        logs
+      );
+      redditPostsTotal += posts.length;
 
-        for (const post of posts) {
-          if (!post.permalink) continue;
-          if (post.score < 1) continue;
-          const postUrl = `https://reddit.com${post.permalink}`;
-          if (!postsMap.has(postUrl)) {
-            postsMap.set(postUrl, post);
-          }
+      for (const post of posts) {
+        if (!post.permalink) continue;
+        if (post.score < 1) continue;
+        const postUrl = `https://reddit.com${post.permalink}`;
+        if (!postsMap.has(postUrl)) {
+          postsMap.set(postUrl, post);
         }
+      }
 
+      if (redditFetchCount < combinations.length) {
         await sleep(REDDIT_REQUEST_DELAY_MS);
       }
     }
