@@ -19,10 +19,10 @@ const bullets = [
 const tabs = ["Reddit", "X", "LinkedIn"];
 
 export default function Feature2() {
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -39,19 +39,21 @@ export default function Feature2() {
       <div style={containerStyle}>
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
-            gap: isDesktop ? "64px" : "40px",
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            gap: isMobile ? "40px" : "64px",
             alignItems: "center",
           }}
         >
-          <div style={{ order: isDesktop ? 1 : 2 }}>
+          <div style={{ order: isMobile ? 2 : 1, width: "100%" }}>
             <div
               style={{
                 borderRadius: "12px",
                 border: "1px solid rgba(255,255,255,0.1)",
                 background: "rgba(255,255,255,0.05)",
                 padding: "20px",
+                width: "100%",
+                boxSizing: "border-box",
               }}
             >
               <div
@@ -98,7 +100,7 @@ export default function Feature2() {
             </div>
           </div>
 
-          <div style={{ order: isDesktop ? 2 : 1 }}>
+          <div style={{ order: isMobile ? 1 : 2, width: "100%" }}>
             <h2 style={{ ...sectionTitleStyle, color: landingColors.white }}>
               Crée du contenu qui attire des clients
             </h2>

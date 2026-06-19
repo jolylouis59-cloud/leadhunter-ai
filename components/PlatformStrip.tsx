@@ -1,23 +1,10 @@
+import RedditLogo from "./RedditLogo";
+
 const PLATFORMS = [
   { id: "reddit", label: "Reddit", color: "#FF4500" },
   { id: "x", label: "X", color: "#2B2B2B" },
   { id: "linkedin", label: "LinkedIn", color: "#0A66C2" },
 ] as const;
-
-function RedditLogo() {
-  return (
-    <svg
-      width={28}
-      height={28}
-      viewBox="0 0 24 24"
-      fill="#FF4500"
-      aria-hidden
-      style={{ flexShrink: 0 }}
-    >
-      <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.03 4.87-6.77 4.87-3.74 0-6.77-2.176-6.77-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.85-3.994 2.59.544a1.25 1.25 0 0 1 1.249-1.25z" />
-    </svg>
-  );
-}
 
 function XLogo() {
   return (
@@ -60,7 +47,7 @@ function PlatformItem({ id, label }: { id: string; label: string }) {
         flexShrink: 0,
       }}
     >
-      {id === "reddit" && <RedditLogo />}
+      {id === "reddit" && <RedditLogo size={28} />}
       {id === "x" && <XLogo />}
       {id === "linkedin" && <LinkedInLogo />}
       <span

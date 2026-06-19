@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
 import {
   containerStyle,
   landingColors,
@@ -11,10 +12,28 @@ import {
   sectionTitleStyle,
 } from "@/lib/landing-styles";
 
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const ANNUAL_PRICE_IDS = {
+  starter: process.env.NEXT_PUBLIC_STRIPE_STARTER_ANNUAL_PRICE_ID ?? "",
+  growth: process.env.NEXT_PUBLIC_STRIPE_GROWTH_ANNUAL_PRICE_ID ?? "",
+  agency: process.env.NEXT_PUBLIC_STRIPE_AGENCY_ANNUAL_PRICE_ID ?? "",
+};
+
+const MONTHLY_PRICE_IDS = {
+  starter: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID ?? "",
+  growth: process.env.NEXT_PUBLIC_STRIPE_GROWTH_PRICE_ID ?? "",
+  agency: process.env.NEXT_PUBLIC_STRIPE_AGENCY_PRICE_ID ?? "",
+};
+
 type PlanFeature = string | { text: string; tooltip: string };
 
 const plans = [
   {
+    key: "starter" as const,
     name: "Starter",
     tagline: "Idéal pour tester et valider",
     monthlyPrice: 49,
@@ -32,6 +51,7 @@ const plans = [
     popular: false,
   },
   {
+    key: "growth" as const,
     name: "Growth",
     tagline: "Le plus populaire chez nos fondateurs",
     monthlyPrice: 99,
@@ -55,6 +75,7 @@ const plans = [
     popular: true,
   },
   {
+    key: "agency" as const,
     name: "Agency",
     tagline: null,
     monthlyPrice: 199,
@@ -94,9 +115,7 @@ function FeatureItem({
         marginBottom: "12px",
       }}
     >
-      <span style={{ fontWeight: 700, color: isPopular ? landingColors.accent : landingColors.accent }}>
-        ✓
-      </span>
+      <span style={{ fontWeight: 700, color: landingColors.accent }}>✓</span>
       {tooltip ? (
         <span title={tooltip} style={{ borderBottom: "1px dashed currentColor", cursor: "help" }}>
           {text}
@@ -111,13 +130,87 @@ function FeatureItem({
 export default function Pricing() {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const [isDesktop, setIsDesktop] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
-    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    const check = () => {
+      const w = window.innerWidth;
+      setIsDesktop(w >= 1024);
+      setIsMobile(w < 768);
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  useEffect(() => {
+    async function loadUser() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        setUserEmail(user.email ?? "");
+      }
+    }
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  function getPriceId(planKey: "starter" | "growth" | "agency") {
+    const ids = billing === "annual" ? ANNUAL_PRICE_IDS : MONTHLY_PRICE_IDS;
+    return ids[planKey];
+  }
+
+  async function handleSelectPlan(planKey: "starter" | "growth" | "agency") {
+    const priceId = getPriceId(planKey);
+
+    if (!priceId) {
+      setToast("Price ID Stripe non configuré pour ce plan.");
+      return;
+    }
+
+    if (!userId || !userEmail) {
+      window.location.href = "/login";
+      return;
+    }
+
+    setCheckoutLoading(planKey);
+
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priceId, userId, userEmail }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.url) {
+        setToast(data.error || "Erreur lors de la création du checkout");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch (e) {
+      setToast("Erreur checkout: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setCheckoutLoading(null);
+    }
+  }
+
+  const orderedPlans = isMobile
+    ? [plans[1], plans[0], plans[2]]
+    : plans;
 
   return (
     <section
@@ -190,7 +283,7 @@ export default function Pricing() {
             alignItems: "center",
           }}
         >
-          {plans.map((plan) => {
+          {orderedPlans.map((plan) => {
             const isPopular = plan.popular;
             const displayPrice = billing === "monthly" ? plan.monthlyPrice : plan.annualPrice;
 
@@ -203,6 +296,8 @@ export default function Pricing() {
                   flexDirection: "column",
                   borderRadius: "12px",
                   padding: "32px",
+                  width: "100%",
+                  boxSizing: "border-box",
                   background: isPopular ? landingColors.dark : landingColors.white,
                   color: isPopular ? landingColors.white : landingColors.text,
                   border: isPopular ? "none" : `1px solid ${landingColors.border}`,
@@ -236,7 +331,7 @@ export default function Pricing() {
                       margin: "6px 0 0",
                       fontSize: "13px",
                       fontWeight: 600,
-                      color: isPopular ? landingColors.accent : landingColors.accent,
+                      color: landingColors.accent,
                     }}
                   >
                     {plan.tagline}
@@ -247,7 +342,13 @@ export default function Pricing() {
                   <span style={{ color: isPopular ? "rgba(255,255,255,0.6)" : "#6B7280" }}>/mois</span>
                 </div>
                 {billing === "annual" && (
-                  <p style={{ margin: "4px 0 0", fontSize: "12px", color: isPopular ? "rgba(255,255,255,0.6)" : "#6B7280" }}>
+                  <p
+                    style={{
+                      margin: "4px 0 0",
+                      fontSize: "12px",
+                      color: isPopular ? "rgba(255,255,255,0.6)" : "#6B7280",
+                    }}
+                  >
                     soit {plan.annualPrice}€/mois, facturé {plan.annualTotal}€/an
                   </p>
                 )}
@@ -267,24 +368,25 @@ export default function Pricing() {
                   ))}
                 </ul>
 
-                <a
-                  href="/login"
+                <button
+                  type="button"
+                  onClick={() => handleSelectPlan(plan.key)}
+                  disabled={checkoutLoading !== null}
                   style={{
                     ...(isPopular ? primaryBtnStyle : outlineBtnStyle),
                     marginTop: "32px",
                     width: "100%",
                     textAlign: "center",
                     boxSizing: "border-box",
-                    ...(isPopular
-                      ? {}
-                      : {
-                          borderColor: landingColors.accent,
-                          color: landingColors.accent,
-                        }),
+                    cursor: checkoutLoading !== null ? "wait" : "pointer",
+                    opacity: checkoutLoading !== null && checkoutLoading !== plan.key ? 0.6 : 1,
+                    ...(!isPopular
+                      ? { borderColor: landingColors.accent, color: landingColors.accent }
+                      : {}),
                   }}
                 >
-                  {plan.cta}
-                </a>
+                  {checkoutLoading === plan.key ? "Redirection…" : plan.cta}
+                </button>
               </div>
             );
           })}
@@ -302,6 +404,26 @@ export default function Pricing() {
           (Prix HT, TVA applicable selon votre pays) · Annulation en 1 clic
         </p>
       </div>
+
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            left: isMobile ? 24 : "auto",
+            background: landingColors.text,
+            color: landingColors.white,
+            padding: "14px 20px",
+            borderRadius: "10px",
+            fontSize: "14px",
+            zIndex: 100,
+            fontFamily: landingFont,
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </section>
   );
 }

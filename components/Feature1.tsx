@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import RedditLogo from "./RedditLogo";
 import {
   containerStyle,
   landingColors,
@@ -16,10 +17,10 @@ const bullets = [
 ];
 
 export default function Feature1() {
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    const check = () => setIsMobile(window.innerWidth < 768);
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -37,9 +38,9 @@ export default function Feature1() {
       <div style={containerStyle}>
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
-            gap: isDesktop ? "64px" : "40px",
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            gap: isMobile ? "40px" : "64px",
             alignItems: "center",
           }}
         >
@@ -75,6 +76,8 @@ export default function Feature1() {
               background: landingColors.white,
               padding: "20px",
               boxShadow: "0 4px 20px rgba(0,0,0,0.06)",
+              width: "100%",
+              boxSizing: "border-box",
             }}
           >
             <div
@@ -86,18 +89,10 @@ export default function Feature1() {
                 borderBottom: `1px solid ${landingColors.border}`,
               }}
             >
-              <span
-                style={{
-                  borderRadius: "999px",
-                  background: "#FFEDD5",
-                  padding: "4px 12px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "#C2410C",
-                }}
-              >
-                Reddit
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <RedditLogo size={22} />
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "#C2410C" }}>Reddit</span>
+              </div>
               <span
                 style={{
                   borderRadius: "999px",

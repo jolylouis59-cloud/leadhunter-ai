@@ -3,24 +3,27 @@
 import { useEffect, useState } from "react";
 import EmailForm from "./EmailForm";
 import Logo from "./Logo";
+import RedditLogo from "./RedditLogo";
 import UserCount from "./UserCount";
 import LiveLeadTicker from "./LiveLeadTicker";
-import {
-  containerStyle,
-  headlineStyle,
-  landingColors,
-  landingFont,
-} from "@/lib/landing-styles";
+import { headlineStyle, landingColors, landingFont } from "@/lib/landing-styles";
 
 export default function Hero() {
   const [isDesktop, setIsDesktop] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    const check = () => {
+      const w = window.innerWidth;
+      setIsDesktop(w >= 1024);
+      setIsMobile(w < 768);
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  const sectionPadding = isMobile ? "24px 16px" : "0 24px";
 
   return (
     <section
@@ -29,8 +32,10 @@ export default function Hero() {
         position: "relative",
         overflow: "hidden",
         background: landingColors.dark,
-        paddingTop: "100px",
-        paddingBottom: "80px",
+        paddingTop: isMobile ? "88px" : "100px",
+        paddingBottom: isMobile ? "48px" : "80px",
+        paddingLeft: isMobile ? "16px" : 0,
+        paddingRight: isMobile ? "16px" : 0,
         fontFamily: landingFont,
       }}
     >
@@ -49,7 +54,6 @@ export default function Hero() {
         }
       `}</style>
 
-      {/* Particules radar */}
       {[
         { top: "18%", left: "12%", delay: "0s" },
         { top: "32%", left: "28%", delay: "0.8s" },
@@ -75,16 +79,16 @@ export default function Hero() {
         />
       ))}
 
-      <div style={containerStyle}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: sectionPadding, boxSizing: "border-box" }}>
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: isDesktop ? "3fr 2fr" : "1fr",
-            gap: isDesktop ? "64px" : "48px",
+            display: "flex",
+            flexDirection: isDesktop ? "row" : "column",
+            gap: isDesktop ? "64px" : "32px",
             alignItems: "center",
           }}
         >
-          <div style={{ position: "relative", zIndex: 1, minWidth: 0 }}>
+          <div style={{ position: "relative", zIndex: 1, minWidth: 0, width: "100%" }}>
             <div
               style={{
                 display: "inline-flex",
@@ -112,6 +116,7 @@ export default function Hero() {
             <h1
               style={{
                 ...headlineStyle,
+                fontSize: isMobile ? "clamp(2rem, 8vw, 3.5rem)" : headlineStyle.fontSize,
                 marginTop: "24px",
                 color: landingColors.white,
               }}
@@ -123,7 +128,7 @@ export default function Hero() {
               style={{
                 margin: "24px 0 0",
                 maxWidth: "520px",
-                fontSize: "18px",
+                fontSize: isMobile ? "16px" : "18px",
                 lineHeight: 1.55,
                 color: landingColors.muted,
               }}
@@ -140,18 +145,10 @@ export default function Hero() {
             <UserCount />
           </div>
 
-          {isDesktop && (
-            <div style={{ minWidth: 0 }}>
-              <HeroMockup />
-            </div>
-          )}
-        </div>
-
-        {!isDesktop && (
-          <div style={{ marginTop: "48px" }}>
-            <HeroMockup compact />
+          <div style={{ minWidth: 0, width: "100%" }}>
+            <HeroMockup compact={isMobile} />
           </div>
-        )}
+        </div>
       </div>
     </section>
   );
@@ -165,6 +162,8 @@ function HeroMockup({ compact }: { compact?: boolean }) {
         background: "#F8F9FA",
         padding: compact ? "20px" : "24px",
         boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+        width: "100%",
+        boxSizing: "border-box",
       }}
     >
       <div
@@ -177,21 +176,7 @@ function HeroMockup({ compact }: { compact?: boolean }) {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "50%",
-                background: "#FFEDD5",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="#EA580C">
-                <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.03 4.87-6.77 4.87-3.74 0-6.77-2.176-6.77-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.85-3.994 2.59.544a1.25 1.25 0 0 1 1.249-1.25z" />
-              </svg>
-            </div>
+            <RedditLogo size={24} />
             <span style={{ fontSize: "14px", fontWeight: 600, color: "#4B5563" }}>r/SaaS</span>
           </div>
           <span
