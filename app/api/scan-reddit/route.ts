@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import { XMLParser } from "fast-xml-parser";
 import { createClient } from "@/lib/supabase-server";
 
-const REDDIT_HEADERS = {
-  "User-Agent": "LeadHunterAI/1.0 (by /u/leadhunterai)",
-  Accept: "application/rss+xml, application/xml, text/xml, */*",
-};
 const REDDIT_REQUEST_DELAY_MS = 500;
 const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
 const MAX_COMBINATIONS_PER_SCAN = 20;
@@ -134,26 +129,59 @@ function pickScanCombinations(
   return picked;
 }
 
-async function fetchRedditRssText(
-  url: string,
-  ctx: { subreddit: string; keyword: string }
-): Promise<{ text: string | null; status: number }> {
-  const res = await fetch(url, {
-    headers: REDDIT_HEADERS,
-    cache: "no-store",
-  });
-  const text = await res.text();
+async function searchReddit(subreddit: string, keyword: string) {
+  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=1&sort=new&limit=25&t=week`;
 
-  if (!res.ok) {
-    console.error("REDDIT RSS ERROR:", {
-      ...ctx,
-      url,
-      status: res.status,
-      bodyPreview: text.slice(0, 500),
+  const fetchOnce = () =>
+    fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; LeadHunterAI/1.0)",
+      },
+      cache: "no-store",
     });
+
+  let response = await fetchOnce();
+
+  if (response.status === 429) {
+    console.log("REDDIT 429 — retry dans 2s:", { subreddit, keyword, url });
+    await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
+    response = await fetchOnce();
   }
 
-  return { text: res.ok ? text : null, status: res.status };
+  if (!response.ok) {
+    if (response.status === 429) {
+      console.error("REDDIT 429 après retry — combinaison abandonnée:", {
+        subreddit,
+        keyword,
+        url,
+      });
+    } else {
+      console.error("REDDIT JSON ERROR:", { subreddit, keyword, url, status: response.status });
+    }
+    return [];
+  }
+
+  const data = await response.json();
+  return data?.data?.children?.map((child: { data?: Record<string, unknown> }) => child.data) || [];
+}
+
+function mapRedditPost(postData: Record<string, unknown>, subreddit: string): RedditPost | null {
+  const title = String(postData.title ?? "").trim();
+  const permalink = String(postData.permalink ?? "");
+  const url = permalink ? `https://reddit.com${permalink}` : String(postData.url ?? "");
+  if (!title || !url) return null;
+
+  const selftextRaw = String(postData.selftext ?? "");
+  const selftext =
+    selftextRaw.length > 200 ? selftextRaw.slice(0, 200).trim() + "…" : selftextRaw;
+
+  return {
+    title,
+    author: String(postData.author ?? ""),
+    url,
+    subreddit: String(postData.subreddit ?? subreddit),
+    selftext,
+  };
 }
 
 async function fetchUserConfig(supabase: ReturnType<typeof createClient>, userId: string) {
@@ -244,154 +272,25 @@ Réponds UNIQUEMENT avec ce JSON sans texte autour :
   return { score, reason: String(parsed.reason ?? "") };
 }
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function excerptContent(content: string, max = 200): string {
-  const text = stripHtml(content);
-  if (text.length <= max) return text;
-  return text.slice(0, max).trim() + "…";
-}
-
-function normalizeAuthor(raw: unknown): string {
-  const value = String(raw ?? "").trim();
-  return value.replace(/^\/u\//i, "").replace(/^u\//i, "");
-}
-
-function extractLink(entry: Record<string, unknown>): string {
-  const link = entry.link;
-
-  if (typeof link === "string") return link;
-
-  if (Array.isArray(link)) {
-    for (const item of link) {
-      if (typeof item === "string" && item) return item;
-      if (item && typeof item === "object" && "@_href" in item) {
-        return String((item as Record<string, unknown>)["@_href"] ?? "");
-      }
-    }
-    return "";
-  }
-
-  if (link && typeof link === "object") {
-    const obj = link as Record<string, unknown>;
-    if ("@_href" in obj) return String(obj["@_href"] ?? "");
-    if ("href" in obj) return String(obj.href ?? "");
-  }
-
-  return "";
-}
-
-function extractContent(entry: Record<string, unknown>): string {
-  const content = entry.content;
-  if (typeof content === "string") return content;
-  if (content && typeof content === "object") {
-    const obj = content as Record<string, unknown>;
-    if ("#text" in obj) return String(obj["#text"] ?? "");
-    if ("__cdata" in obj) return String(obj.__cdata ?? "");
-  }
-  if (typeof entry.summary === "string") return entry.summary;
-  if (typeof entry.description === "string") return entry.description;
-  return "";
-}
-
-function parseRssFeed(xml: string, subreddit: string): RedditPost[] {
-  const parser = new XMLParser({
-    ignoreAttributes: false,
-    attributeNamePrefix: "@_",
-    cdataPropName: "__cdata",
-  });
-
-  const parsed = parser.parse(xml) as Record<string, unknown>;
-  const feed = (parsed.feed ?? (parsed.rss as Record<string, unknown>)?.channel) as
-    | Record<string, unknown>
-    | undefined;
-
-  if (!feed) return [];
-
-  let entries = feed.entry ?? feed.item;
-  if (!entries) return [];
-  if (!Array.isArray(entries)) entries = [entries];
-
-  return (entries as Record<string, unknown>[])
-    .map((entry) => {
-      const title = String(entry.title ?? "").replace(/\s+/g, " ").trim();
-      const url = extractLink(entry);
-      const authorObj = entry.author as Record<string, unknown> | undefined;
-      const author = normalizeAuthor(
-        authorObj?.name ?? entry["dc:creator"] ?? entry.creator
-      );
-      const selftext = excerptContent(extractContent(entry));
-
-      return {
-        title,
-        author,
-        url,
-        subreddit,
-        selftext,
-      } satisfies RedditPost;
-    })
-    .filter((p) => p.title && p.url);
-}
-
 async function scanSingleCombination(
   subreddit: string,
   keyword: string
 ): Promise<{ posts: RedditPost[]; succeeded: boolean; status: number }> {
   const ctx = { subreddit, keyword };
-  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.rss?q=${encodeURIComponent(
-    keyword
-  )}&sort=new&limit=25`;
-
-  console.log("REDDIT RSS URL CALLED:", { ...ctx, url });
-
-  let { text, status } = await fetchRedditRssText(url, ctx);
-
-  if (status === 429) {
-    console.log("REDDIT 429 — retry dans 2s:", { ...ctx, url });
-    await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
-    ({ text, status } = await fetchRedditRssText(url, ctx));
-  }
-
-  if (status === 429 || !text) {
-    if (status === 429) {
-      console.error("REDDIT 429 après retry — combinaison abandonnée:", { ...ctx, url });
-    }
-    return { posts: [], succeeded: false, status };
-  }
-
-  if (!text.includes("<") || (!text.includes("<feed") && !text.includes("<rss"))) {
-    console.log("REDDIT RETURNED NON-XML:", {
-      ...ctx,
-      url,
-      status,
-      bodyPreview: text.slice(0, 500),
-    });
-    return { posts: [], succeeded: false, status };
-  }
+  console.log("REDDIT JSON SEARCH:", ctx);
 
   try {
-    const posts = parseRssFeed(text, subreddit);
-    console.log("REDDIT POSTS COUNT:", { ...ctx, url, postsReturned: posts.length });
-    return { posts, succeeded: true, status };
+    const rawPosts = await searchReddit(subreddit, keyword);
+    const posts = rawPosts
+      .filter(Boolean)
+      .map((postData: Record<string, unknown>) => mapRedditPost(postData, subreddit))
+      .filter((p: RedditPost | null): p is RedditPost => p !== null);
+
+    console.log("REDDIT POSTS COUNT:", { ...ctx, postsReturned: posts.length });
+    return { posts, succeeded: true, status: 200 };
   } catch (err) {
-    console.error("REDDIT RSS PARSE ERROR:", {
-      ...ctx,
-      url,
-      error: String(err),
-      bodyPreview: text.slice(0, 500),
-    });
-    return { posts: [], succeeded: false, status };
+    console.error("REDDIT JSON ERROR:", { ...ctx, error: String(err) });
+    return { posts: [], succeeded: false, status: 500 };
   }
 }
 
