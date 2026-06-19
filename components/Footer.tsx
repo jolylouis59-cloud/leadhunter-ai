@@ -74,6 +74,17 @@ export default function Footer() {
               {l.label}
             </Link>
           ))}
+          <Link
+            href="/blog"
+            style={{
+              fontSize: 13,
+              color: "#1F4D3A",
+              opacity: 0.7,
+              textDecoration: "none",
+            }}
+          >
+            📰 The Growth Tribune
+          </Link>
         </div>
 
         <div
