@@ -212,7 +212,10 @@ function SettingsContent() {
   const [subreddits, setSubreddits] = useState<string[]>(DEFAULT_SUBREDDITS);
   const [keywordInput, setKeywordInput] = useState("");
   const [subredditInput, setSubredditInput] = useState("");
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [bulkImportText, setBulkImportText] = useState("");
   const [initialSnapshot, setInitialSnapshot] = useState("");
+  const [initialNotificationsSnapshot, setInitialNotificationsSnapshot] = useState("");
 
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [slackAlerts, setSlackAlerts] = useState(false);
@@ -294,6 +297,10 @@ function SettingsContent() {
             target: tg,
             keywords: kw,
             subreddits: sr,
+          })
+        );
+        setInitialNotificationsSnapshot(
+          JSON.stringify({
             emailAlerts: data.email_alerts ?? true,
             slackAlerts: data.slack_alerts ?? false,
             autoScan: data.auto_scan ?? false,
@@ -311,6 +318,10 @@ function SettingsContent() {
             target: "",
             keywords: DEFAULT_KEYWORDS,
             subreddits: DEFAULT_SUBREDDITS,
+          })
+        );
+        setInitialNotificationsSnapshot(
+          JSON.stringify({
             emailAlerts: true,
             slackAlerts: false,
             autoScan: false,
@@ -366,13 +377,20 @@ function SettingsContent() {
   const keywordLimit = getKeywordLimit(currentPlan);
   const subredditLimit = getSubredditLimit(currentPlan);
 
-  const isDirty = useMemo(() => {
+  const isScannerDirty = useMemo(() => {
     if (!initialSnapshot) return false;
     const current = JSON.stringify({
       productDesc,
       target,
       keywords,
       subreddits,
+    });
+    return current !== initialSnapshot;
+  }, [initialSnapshot, productDesc, target, keywords, subreddits]);
+
+  const isNotificationsDirty = useMemo(() => {
+    if (!initialNotificationsSnapshot) return false;
+    const current = JSON.stringify({
       emailAlerts,
       slackAlerts,
       autoScan,
@@ -381,13 +399,9 @@ function SettingsContent() {
       slackWebhook,
       autoScanHour,
     });
-    return current !== initialSnapshot;
+    return current !== initialNotificationsSnapshot;
   }, [
-    initialSnapshot,
-    productDesc,
-    target,
-    keywords,
-    subreddits,
+    initialNotificationsSnapshot,
     emailAlerts,
     slackAlerts,
     autoScan,
@@ -442,7 +456,47 @@ function SettingsContent() {
     setSubredditInput("");
   }
 
-  async function handleSave() {
+  function bulkImportKeywords() {
+    const parsed = bulkImportText
+      .split(/[,;\n]+/)
+      .map((k) => k.trim())
+      .filter(Boolean);
+
+    const existing = new Set(keywords.map((k) => k.toLowerCase()));
+    const toAdd: string[] = [];
+
+    for (const kw of parsed) {
+      if (keywords.length + toAdd.length >= keywordLimit) break;
+      if (existing.has(kw.toLowerCase())) continue;
+      existing.add(kw.toLowerCase());
+      toAdd.push(kw);
+    }
+
+    if (toAdd.length === 0) {
+      setKeywordError("Aucun nouveau mot-clé à ajouter.");
+      return;
+    }
+
+    setKeywords((prev) => [...prev, ...toAdd]);
+    setKeywordError(null);
+    setBulkImportText("");
+    setBulkImportOpen(false);
+    setToast(`${toAdd.length} mot${toAdd.length > 1 ? "s" : ""}-clé${toAdd.length > 1 ? "s" : ""} ajouté${toAdd.length > 1 ? "s" : ""}`);
+  }
+
+  function clearAllKeywords() {
+    if (!window.confirm("Effacer tous les mots-clés ?")) return;
+    setKeywords([]);
+    setKeywordError(null);
+  }
+
+  function clearAllSubreddits() {
+    if (!window.confirm("Effacer tous les subreddits ?")) return;
+    setSubreddits([]);
+    setSubredditError(null);
+  }
+
+  async function handleSaveScanner() {
     setSaving(true);
 
     const uid = (await supabase.auth.getUser()).data.user?.id;
@@ -454,6 +508,35 @@ function SettingsContent() {
         target: target,
         keywords: keywords,
         subreddits: subreddits,
+      },
+      { onConflict: "user_id" }
+    );
+
+    setSaving(false);
+
+    if (error) {
+      setToast("Erreur : " + error.message);
+    } else {
+      setToast("Paramètres sauvegardés ✓");
+      setInitialSnapshot(
+        JSON.stringify({
+          productDesc,
+          target,
+          keywords,
+          subreddits,
+        })
+      );
+    }
+  }
+
+  async function handleSaveNotifications() {
+    setSaving(true);
+
+    const uid = (await supabase.auth.getUser()).data.user?.id;
+
+    const { error } = await supabase.from("user_configs").upsert(
+      {
+        user_id: uid,
         email_alerts: emailAlerts,
         slack_alerts: slackAlerts,
         auto_scan: autoScan,
@@ -471,12 +554,8 @@ function SettingsContent() {
       setToast("Erreur : " + error.message);
     } else {
       setToast("Paramètres sauvegardés ✓");
-      setInitialSnapshot(
+      setInitialNotificationsSnapshot(
         JSON.stringify({
-          productDesc,
-          target,
-          keywords,
-          subreddits,
           emailAlerts,
           slackAlerts,
           autoScan,
@@ -799,7 +878,7 @@ function SettingsContent() {
                   }
                 }}
                 placeholder="Ajouter un mot-clé…"
-                style={inputStyle}
+                style={{ ...inputStyle, flex: 1 }}
               />
               <button
                 type="button"
@@ -820,7 +899,93 @@ function SettingsContent() {
               >
                 Ajouter
               </button>
+              <button
+                type="button"
+                onClick={() => setBulkImportOpen(true)}
+                style={{
+                  border: "1px solid #ddd",
+                  background: "transparent",
+                  color: "#666",
+                  fontSize: 13,
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontFamily,
+                  width: isMobile ? "100%" : "auto",
+                  flexShrink: 0,
+                }}
+              >
+                Importer en masse
+              </button>
             </div>
+            {bulkImportOpen && (
+              <div
+                style={{
+                  marginTop: 12,
+                  background: "white",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: 12,
+                }}
+              >
+                <textarea
+                  value={bulkImportText}
+                  onChange={(e) => setBulkImportText(e.target.value)}
+                  placeholder={`Colle tes mots-clés ici — séparés par virgule, point-virgule, ou retour à la ligne.\nEx: trouver des clients, prospection B2B; alternative cold email`}
+                  style={{
+                    background: "white",
+                    border: "1px solid #ddd",
+                    borderRadius: 8,
+                    padding: 12,
+                    width: "100%",
+                    height: 120,
+                    fontSize: 14,
+                    boxSizing: "border-box",
+                    resize: "vertical",
+                    fontFamily,
+                    outline: "none",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={bulkImportKeywords}
+                    style={{
+                      background: "#1F4D3A",
+                      color: "white",
+                      padding: "8px 20px",
+                      borderRadius: 8,
+                      fontSize: 14,
+                      border: "none",
+                      cursor: "pointer",
+                      fontFamily,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Ajouter tous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkImportOpen(false);
+                      setBulkImportText("");
+                    }}
+                    style={{
+                      background: "transparent",
+                      color: "#666",
+                      padding: "8px 20px",
+                      borderRadius: 8,
+                      fontSize: 14,
+                      border: "1px solid #ddd",
+                      cursor: "pointer",
+                      fontFamily,
+                    }}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            )}
             {renderBadges(keywords, (item) =>
               setKeywords((prev) => prev.filter((k) => k !== item))
             )}
@@ -829,6 +994,7 @@ function SettingsContent() {
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
+                  alignItems: "center",
                   fontSize: "12px",
                   color: colors.textMuted,
                   marginBottom: "6px",
@@ -837,6 +1003,24 @@ function SettingsContent() {
                 <span>
                   {keywords.length} / {keywordLimit} mots-clés
                 </span>
+                {keywords.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAllKeywords}
+                    style={{
+                      color: "#e53e3e",
+                      background: "transparent",
+                      border: "none",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      fontFamily,
+                      padding: 0,
+                    }}
+                  >
+                    Tout effacer
+                  </button>
+                )}
               </div>
               <div
                 style={{
@@ -930,6 +1114,7 @@ function SettingsContent() {
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
+                  alignItems: "center",
                   fontSize: "12px",
                   color: colors.textMuted,
                   marginBottom: "6px",
@@ -938,6 +1123,24 @@ function SettingsContent() {
                 <span>
                   {subreddits.length} / {subredditLimit} subreddits
                 </span>
+                {subreddits.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAllSubreddits}
+                    style={{
+                      color: "#e53e3e",
+                      background: "transparent",
+                      border: "none",
+                      fontSize: 12,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      fontFamily,
+                      padding: 0,
+                    }}
+                  >
+                    Tout effacer
+                  </button>
+                )}
               </div>
               <div
                 style={{
@@ -967,12 +1170,12 @@ function SettingsContent() {
 
           <button
             type="button"
-            onClick={handleSave}
-            disabled={saving || !isDirty}
+            onClick={handleSaveScanner}
+            disabled={saving || !isScannerDirty}
             onMouseEnter={() => setSaveHover(true)}
             onMouseLeave={() => setSaveHover(false)}
             style={{
-              ...primaryButton(saveHover, saving || !isDirty),
+              ...primaryButton(saveHover, saving || !isScannerDirty),
               width: btnWidth,
               minWidth: btnMinWidth,
               padding: "12px 28px",
@@ -1313,12 +1516,12 @@ function SettingsContent() {
           )}
           <button
             type="button"
-            onClick={handleSave}
-            disabled={saving || !isDirty}
+            onClick={handleSaveNotifications}
+            disabled={saving || !isNotificationsDirty}
             onMouseEnter={() => setSaveHover(true)}
             onMouseLeave={() => setSaveHover(false)}
             style={{
-              ...primaryButton(saveHover, saving || !isDirty),
+              ...primaryButton(saveHover, saving || !isNotificationsDirty),
               marginTop: "20px",
               width: btnWidth,
               minWidth: btnMinWidth,
