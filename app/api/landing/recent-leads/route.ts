@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic";
 
 type LeadRow = {
   post_title: string | null;
-  title: string | null;
   subreddit: string | null;
 };
 
@@ -16,7 +15,7 @@ async function fetchLeadsForDays(days: number): Promise<LeadRow[]> {
 
   const { data, error } = await supabase
     .from("leads")
-    .select("post_title, title, subreddit")
+    .select("post_title, subreddit")
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(50);
@@ -30,8 +29,7 @@ function mapLeads(rows: LeadRow[]) {
   const leads: { title: string; subreddit: string }[] = [];
 
   for (const row of rows) {
-    const rawTitle = row.post_title || row.title;
-    const title = sanitizeLeadTitle(rawTitle);
+    const title = sanitizeLeadTitle(row.post_title);
     if (!title) continue;
 
     const sub = (row.subreddit || "reddit").replace(/^r\//i, "");
@@ -59,6 +57,7 @@ export async function GET() {
     return NextResponse.json({ leads });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Erreur serveur";
-    return NextResponse.json({ error: message, leads: [] }, { status: 500 });
+    console.error("LANDING RECENT LEADS ERROR:", message, e);
+    return NextResponse.json({ leads: [], error: message }, { status: 200 });
   }
 }

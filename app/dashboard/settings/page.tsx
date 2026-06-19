@@ -22,19 +22,33 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ];
 
 const DEFAULT_KEYWORDS = [
-  "prospection B2B",
-  "lead generation",
-  "find clients",
-  "growth hacking",
-  "cold outreach",
+  "trouver des clients B2B",
+  "prospection sans cold email",
+  "comment trouver des clients",
+  "outil prospection automatique",
+  "alternative cold email",
+  "générer des leads B2B",
+  "acquisition clients SaaS",
+  "trouver prospects qualifiés",
+  "croissance startup française",
+  "comment vendre son SaaS",
+  "cherche outil prospection",
+  "automatiser sa prospection",
+  "trouver clients sans pub",
+  "growth hacking France",
+  "prospection LinkedIn alternative",
 ];
 
 const DEFAULT_SUBREDDITS = [
+  "FrenchStartup",
+  "france_startup",
+  "Entrepreneur_Francophone",
+  "freelance_france",
+  "marketing_france",
+  "webdev_fr",
   "SaaS",
-  "entrepreneur",
   "startups",
-  "marketing",
-  "Entrepreneur_Ride_Along",
+  "Entrepreneur",
 ];
 
 const ANNUAL_PRICE_IDS: Record<string, string> = {
@@ -780,6 +794,19 @@ function SettingsContent() {
 
           <div>
             <label style={labelStyle}>Mots-clés Reddit</label>
+            <p
+              style={{
+                fontSize: 12,
+                color: "#888888",
+                marginTop: 0,
+                marginBottom: 12,
+                fontStyle: "italic",
+              }}
+            >
+              💡 Conseil : utilise des mots-clés en français pour cibler le marché francophone. Ex :
+              &apos;trouver des clients B2B&apos;, &apos;prospection automatique&apos;, &apos;alternative cold
+              email&apos;
+            </p>
             <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: "10px" }}>
               <input
                 type="text"

@@ -14,8 +14,34 @@ const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
 const MIN_INTENT_SCORE_TO_INSERT = 25;
 
-const DEFAULT_KEYWORDS = ["B2B", "prospecting", "lead generation"];
-const DEFAULT_SUBREDDITS = ["entrepreneur", "SaaS", "smallbusiness"];
+const DEFAULT_KEYWORDS = [
+  "trouver des clients B2B",
+  "prospection sans cold email",
+  "comment trouver des clients",
+  "outil prospection automatique",
+  "alternative cold email",
+  "générer des leads B2B",
+  "acquisition clients SaaS",
+  "trouver prospects qualifiés",
+  "croissance startup française",
+  "comment vendre son SaaS",
+  "cherche outil prospection",
+  "automatiser sa prospection",
+  "trouver clients sans pub",
+  "growth hacking France",
+  "prospection LinkedIn alternative",
+];
+const DEFAULT_SUBREDDITS = [
+  "FrenchStartup",
+  "france_startup",
+  "Entrepreneur_Francophone",
+  "freelance_france",
+  "marketing_france",
+  "webdev_fr",
+  "SaaS",
+  "startups",
+  "Entrepreneur",
+];
 
 type UserConfig = {
   product_description: string;

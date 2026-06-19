@@ -16,25 +16,30 @@ export type GeneratedConfig = {
   subreddits: string[];
 };
 
-function buildPrompt(profile: OnboardingProfile): string {
-  return `Tu es un expert en prospection Reddit B2B.
+const SYSTEM_PROMPT =
+  "Tu es un expert en prospection B2B sur Reddit pour le marché français. Génère des mots-clés de recherche en FRANÇAIS UNIQUEMENT. Ces mots-clés seront utilisés pour trouver des posts Reddit de prospects français qui cherchent des solutions B2B. Génère des expressions naturelles qu'un entrepreneur ou fondateur français utiliserait pour décrire son problème. IMPORTANT : tous les mots-clés doivent être en français.";
 
-À partir de ce profil produit, génère des mots-clés et subreddits pour trouver des prospects qui cherchent activement une solution.
+function buildUserPrompt(profile: OnboardingProfile): string {
+  const profilParts = [
+    profile.productName,
+    profile.productDescription,
+    `Cible : ${profile.targetAudience}`,
+    `Douleur : ${profile.painPoint}`,
+    profile.competitors ? `Concurrents : ${profile.competitors}` : null,
+    profile.websiteUrl ? `Site : ${profile.websiteUrl}` : null,
+    profile.targetPricing ? `Budget cible : ${profile.targetPricing}` : null,
+  ]
+    .filter(Boolean)
+    .join(". ");
 
-PROFIL :
-- Nom du produit : ${profile.productName}
-- Description : ${profile.productDescription}
-- Cible : ${profile.targetAudience}
-- Douleur principale : ${profile.painPoint}
-${profile.competitors ? `- Concurrents : ${profile.competitors}` : ""}
-${profile.websiteUrl ? `- Site web : ${profile.websiteUrl}` : ""}
-${profile.targetPricing ? `- Budget/pricing cible des prospects : ${profile.targetPricing}` : ""}
+  return `Génère 15 mots-clés en FRANÇAIS pour trouver des prospects qui correspondent à ce profil : ${profilParts}. Les mots-clés doivent être des expressions naturelles en français, pas des traductions de l'anglais.
+
+Génère aussi 8 à 10 subreddits pertinents (sans le préfixe r/), en priorisant les communautés francophones : FrenchStartup, france_startup, Entrepreneur_Francophone, freelance_france, marketing_france, webdev_fr, ainsi que SaaS, startups, Entrepreneur.
 
 RÈGLES :
-- Génère 15 à 20 mots-clés Reddit variés, en formulations naturelles (ce que de vrais utilisateurs tapent quand ils galèrent ou cherchent une solution)
-- Génère 8 à 10 subreddits pertinents (sans le préfixe r/)
+- 15 à 20 mots-clés variés, formulations naturelles en français uniquement
 - Pas de doublons, pas de hashtags
-- Mélange français et anglais si pertinent pour la cible
+- Subreddits sans préfixe r/
 
 Réponds UNIQUEMENT avec ce JSON strict, sans texte autour :
 {"keywords":["..."],"subreddits":["..."]}`;
@@ -87,7 +92,8 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 1024,
-        messages: [{ role: "user", content: buildPrompt(body) }],
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: buildUserPrompt(body) }],
       }),
     });
 

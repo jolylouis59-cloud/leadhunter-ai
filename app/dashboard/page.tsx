@@ -314,10 +314,10 @@ export default function DashboardPage() {
       >
         <span style={{ fontSize: "48px", lineHeight: 1 }}>🎯</span>
         <p style={{ marginTop: "20px", marginBottom: 0, fontSize: "18px", fontWeight: 700, color: colors.text }}>
-          Aucun lead pour l&apos;instant
+          Aucun lead pour l&apos;instant — Lance un scan pour trouver tes premiers prospects
         </p>
         <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "14px", color: colors.textMuted, maxWidth: "360px" }}>
-          Lance un premier scan Reddit pour trouver tes prospects
+          Configure tes mots-clés en français dans les paramètres, puis lance un scan Reddit.
         </p>
         <button
           type="button"
