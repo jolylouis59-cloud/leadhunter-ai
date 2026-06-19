@@ -175,7 +175,7 @@ async function fetchRedditPosts(
         author: String(postData.author ?? ""),
         created_utc: Number(postData.created_utc ?? 0),
       }))
-      .filter((p) => p.title && p.permalink);
+      .filter((p: any) => p.title && p.permalink);
 
     logDebug(logs, `Posts found for r/${subreddit} "${keyword}": ${posts.length}`);
 
