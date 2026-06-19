@@ -6,7 +6,7 @@ const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
 const MAX_COMBINATIONS_PER_SCAN = 20;
 const MAX_POSTS_TO_SCORE = 20;
 const CLAUDE_DELAY_MS = 500;
-const MIN_INTENT_SCORE_TO_INSERT = 25;
+const MIN_INTENT_SCORE_TO_INSERT = 20;
 
 const DEFAULT_KEYWORDS = [
   "trouver des clients B2B",
@@ -286,7 +286,7 @@ async function scanSingleCombination(
       .map((postData: Record<string, unknown>) => mapRedditPost(postData, subreddit))
       .filter((p: RedditPost | null): p is RedditPost => p !== null);
 
-    console.log("REDDIT POSTS COUNT:", { ...ctx, postsReturned: posts.length });
+    console.log(`[SCAN] r/${subreddit} "${keyword}" → ${posts.length} posts trouvés`);
     return { posts, succeeded: true, status: 200 };
   } catch (err) {
     console.error("REDDIT JSON ERROR:", { ...ctx, error: String(err) });
@@ -413,12 +413,9 @@ export async function POST() {
     }
 
     const intentScore = intent.score;
+    console.log(`[SCORE] Post "${post.title?.substring(0, 50)}" → score: ${intentScore}`);
+
     const willInsert = intentScore >= MIN_INTENT_SCORE_TO_INSERT;
-    console.log("SCORE CHECK:", {
-      title: post.title,
-      score: intentScore,
-      willInsert,
-    });
 
     if (!willInsert) {
       belowThreshold++;
@@ -427,6 +424,11 @@ export async function POST() {
 
     scoredAboveThreshold.push({ ...post, intentScore });
   }
+
+  const minScore = MIN_INTENT_SCORE_TO_INSERT;
+  console.log(
+    `[FILTER] Seuil minimum: ${minScore}, leads retenus: ${scoredAboveThreshold.length}`
+  );
 
   const postsToInsert = dedupeByTitle(scoredAboveThreshold);
   console.log("TITLE DEDUP:", {
@@ -485,10 +487,18 @@ export async function POST() {
     leads_below_threshold: belowThreshold,
   };
 
+  const totalPosts = allPosts.length;
+
   console.log("SCAN SUMMARY:", scanSummary);
 
   return NextResponse.json({
     success: true,
+    leadsFound: insertCount,
+    postsScanned: totalPosts,
+    message:
+      insertCount > 0
+        ? `${insertCount} leads trouvés`
+        : "Aucun lead au-dessus du seuil",
     ...scanSummary,
   });
 }
