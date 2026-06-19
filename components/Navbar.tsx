@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { containerStyle, landingColors, landingFont, primaryBtnStyle } from "@/lib/landing-styles";
+import { landingColors, landingFont, primaryBtnStyle } from "@/lib/landing-styles";
 
 const links = [
   { label: "Fonctionnalités", href: "#fonctionnalites" },
@@ -50,12 +50,16 @@ export default function Navbar() {
     >
       <div
         style={{
-          ...containerStyle,
           display: "flex",
-          height: "64px",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: "12px",
+          height: isMobile ? 56 : 64,
+          padding: isMobile ? "0 16px" : "0 24px",
+          maxWidth: isMobile ? "100%" : 1100,
+          margin: "0 auto",
+          boxSizing: "border-box",
+          gap: 8,
+          width: "100%",
         }}
       >
         <a
@@ -63,26 +67,47 @@ export default function Navbar() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "10px",
+            gap: isMobile ? 6 : 10,
             textDecoration: "none",
             flexShrink: 0,
+            minWidth: 0,
           }}
         >
-          <img src="/logo.png" width={36} height={36} alt="LeadHunter AI" />
-          <span style={{ fontSize: "16px", fontWeight: 700, color: logoTextColor }}>
-            LeadHunter AI
-          </span>
+          <img
+            src="/logo.png"
+            width={isMobile ? 32 : 36}
+            height={isMobile ? 32 : 36}
+            alt="LeadHunter AI"
+            style={{ flexShrink: 0 }}
+          />
+          {!isMobile && (
+            <span style={{ fontSize: 16, fontWeight: 700, color: logoTextColor }}>LeadHunter AI</span>
+          )}
+          {isMobile && (
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: logoTextColor,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              LeadHunter
+            </span>
+          )}
         </a>
 
         {!isMobile && (
-          <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-            <nav style={{ display: "flex", alignItems: "center", gap: "32px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 24, flexShrink: 0 }}>
+            <nav style={{ display: "flex", alignItems: "center", gap: 32 }}>
               {links.map((l) => (
                 <a
                   key={l.href}
                   href={l.href}
                   style={{
-                    fontSize: "14px",
+                    fontSize: 14,
                     fontWeight: 500,
                     color: scrolled ? "#6B7280" : "rgba(255,255,255,0.85)",
                     textDecoration: "none",
@@ -97,30 +122,42 @@ export default function Navbar() {
               style={{
                 border: `1.5px solid ${scrolled ? landingColors.accent : "rgba(255,255,255,0.6)"}`,
                 color: scrolled ? landingColors.accent : landingColors.white,
-                borderRadius: "8px",
+                borderRadius: 8,
                 padding: "8px 18px",
                 fontWeight: 500,
                 textDecoration: "none",
-                fontSize: "14px",
+                fontSize: 14,
+                whiteSpace: "nowrap",
               }}
             >
               Se connecter
             </a>
-            <a href="/login" style={{ ...primaryBtnStyle, padding: "12px 20px" }}>
+            <a href="/login" style={{ ...primaryBtnStyle, padding: "12px 20px", whiteSpace: "nowrap" }}>
               Commencer gratuitement
             </a>
           </div>
         )}
 
         {isMobile && (
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexShrink: 1,
+              minWidth: 0,
+              justifyContent: "flex-end",
+            }}
+          >
             <a
               href="/login"
               style={{
                 ...primaryBtnStyle,
-                padding: "10px 14px",
-                fontSize: "12px",
+                padding: "8px 14px",
+                fontSize: 13,
+                borderRadius: 8,
                 whiteSpace: "nowrap",
+                flexShrink: 0,
               }}
             >
               Commencer gratuitement
@@ -130,18 +167,19 @@ export default function Navbar() {
               onClick={() => setOpen(!open)}
               aria-label="Menu"
               style={{
+                width: 36,
+                height: 36,
                 display: "flex",
-                height: "40px",
-                width: "40px",
                 alignItems: "center",
                 justifyContent: "center",
-                borderRadius: "8px",
-                border: `1px solid ${scrolled ? landingColors.border : "rgba(255,255,255,0.3)"}`,
                 background: "transparent",
+                border: "none",
                 cursor: "pointer",
                 color: scrolled ? landingColors.text : landingColors.white,
-                fontSize: "20px",
+                fontSize: 20,
                 lineHeight: 1,
+                flexShrink: 0,
+                padding: 0,
               }}
             >
               {open ? "✕" : "☰"}
@@ -166,7 +204,7 @@ export default function Navbar() {
               style={{
                 display: "block",
                 padding: "12px 0",
-                fontSize: "14px",
+                fontSize: 14,
                 fontWeight: 500,
                 color: drawerText,
                 textDecoration: "none",
@@ -180,11 +218,11 @@ export default function Navbar() {
             onClick={() => setOpen(false)}
             style={{
               display: "block",
-              marginTop: "12px",
+              marginTop: 12,
               textAlign: "center",
               border: `1.5px solid ${landingColors.accent}`,
               color: scrolled ? landingColors.accent : landingColors.white,
-              borderRadius: "8px",
+              borderRadius: 8,
               padding: "10px 18px",
               fontWeight: 500,
               textDecoration: "none",

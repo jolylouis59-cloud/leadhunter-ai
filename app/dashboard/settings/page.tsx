@@ -37,6 +37,18 @@ const DEFAULT_SUBREDDITS = [
   "Entrepreneur_Ride_Along",
 ];
 
+const ANNUAL_PRICE_IDS: Record<string, string> = {
+  starter: process.env.NEXT_PUBLIC_STRIPE_STARTER_ANNUAL_PRICE_ID ?? "",
+  growth: process.env.NEXT_PUBLIC_STRIPE_GROWTH_ANNUAL_PRICE_ID ?? "",
+  agency: process.env.NEXT_PUBLIC_STRIPE_AGENCY_ANNUAL_PRICE_ID ?? "",
+};
+
+const PLAN_PRICING: Record<string, { monthly: string; annualLine: string }> = {
+  starter: { monthly: "49€/mois", annualLine: "39€/mois · 468€/an" },
+  growth: { monthly: "99€/mois", annualLine: "79€/mois · 948€/an" },
+  agency: { monthly: "199€/mois", annualLine: "159€/mois · 1908€/an" },
+};
+
 const PLANS = [
   {
     key: "starter",
@@ -226,6 +238,7 @@ function SettingsContent() {
   const [billingName, setBillingName] = useState("");
   const [billingAddress, setBillingAddress] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">("monthly");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
 
@@ -1012,6 +1025,37 @@ function SettingsContent() {
             )}
           </div>
           <div
+            style={{
+              display: "flex",
+              background: "#F3EDE2",
+              borderRadius: 24,
+              padding: 4,
+              width: "fit-content",
+              margin: "0 auto 32px",
+            }}
+          >
+            {(["monthly", "annual"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setBillingPeriod(mode)}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: 20,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: "none",
+                  fontFamily,
+                  background: billingPeriod === mode ? colors.accent : "transparent",
+                  color: billingPeriod === mode ? "#FFFFFF" : "#666666",
+                }}
+              >
+                {mode === "monthly" ? "Mensuel" : "Annuel -20%"}
+              </button>
+            ))}
+          </div>
+          <div
             style={
               isMobile
                 ? { display: "flex", flexDirection: "column", gap: "12px" }
@@ -1024,6 +1068,11 @@ function SettingsContent() {
           >
             {PLANS.map((plan) => {
               const isCurrent = currentPlan === plan.key;
+              const priceId =
+                billingPeriod === "annual"
+                  ? ANNUAL_PRICE_IDS[plan.key] || plan.priceId
+                  : plan.priceId;
+              const pricing = PLAN_PRICING[plan.key];
               return (
               <div
                 key={plan.name}
@@ -1084,10 +1133,16 @@ function SettingsContent() {
                   {plan.desc}
                 </p>
                 <p style={{ margin: "16px 0 0", fontSize: "28px", fontWeight: 800, color: colors.text }}>
-                  {plan.price}
-                  <span style={{ fontSize: "13px", fontWeight: 500, color: colors.textMuted }}>
-                    {plan.period}
-                  </span>
+                  {billingPeriod === "annual" && pricing ? (
+                    <span style={{ fontSize: "20px" }}>{pricing.annualLine}</span>
+                  ) : (
+                    <>
+                      {plan.price}
+                      <span style={{ fontSize: "13px", fontWeight: 500, color: colors.textMuted }}>
+                        {plan.period}
+                      </span>
+                    </>
+                  )}
                 </p>
                 <ul style={{ margin: "16px 0 0", padding: 0, listStyle: "none" }}>
                   {plan.features.map((f) => (
@@ -1107,7 +1162,7 @@ function SettingsContent() {
                 </ul>
                 <button
                   type="button"
-                  onClick={() => !isCurrent && handleSelectPlan(plan.priceId, plan.key)}
+                  onClick={() => !isCurrent && handleSelectPlan(priceId, plan.key)}
                   disabled={isCurrent || checkoutLoading === plan.key}
                   style={{
                     ...(plan.popular && !isCurrent ? primaryButton(false, false) : {}),

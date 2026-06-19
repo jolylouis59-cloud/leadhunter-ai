@@ -31,28 +31,42 @@ function StepCard({
   num,
   title,
   desc,
-  mobile,
+  stepLabel,
 }: {
   num: string;
   title: string;
   desc: string;
-  mobile?: boolean;
+  stepLabel?: string;
 }) {
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
-        flex: mobile ? "0 0 auto" : 1,
-        minWidth: mobile ? "80vw" : undefined,
-        scrollSnapAlign: mobile ? "center" : undefined,
+        flex: 1,
+        width: "100%",
         background: landingColors.white,
         border: `1px solid ${landingColors.border}`,
         borderRadius: "12px",
         padding: "32px",
         boxSizing: "border-box",
+        marginBottom: stepLabel ? 32 : 0,
       }}
     >
+      {stepLabel && (
+        <p
+          style={{
+            fontSize: 12,
+            color: landingColors.accent,
+            fontWeight: 700,
+            letterSpacing: 2,
+            marginBottom: 8,
+            marginTop: 0,
+          }}
+        >
+          {stepLabel}
+        </p>
+      )}
       <span style={{ fontSize: "48px", fontWeight: 800, lineHeight: 1, color: landingColors.accent }}>
         {num}
       </span>
@@ -88,21 +102,9 @@ export default function HowItWorks() {
         </h2>
 
         {isMobile ? (
-          <div
-            style={{
-              marginTop: "40px",
-              display: "flex",
-              gap: "16px",
-              overflowX: "auto",
-              scrollSnapType: "x mandatory",
-              WebkitOverflowScrolling: "touch",
-              scrollbarWidth: "none",
-              msOverflowStyle: "none",
-              padding: "4px 0 8px",
-            }}
-          >
-            {steps.map((s) => (
-              <StepCard key={s.num} {...s} mobile />
+          <div style={{ marginTop: 40, display: "flex", flexDirection: "column", width: "100%" }}>
+            {steps.map((s, i) => (
+              <StepCard key={s.num} {...s} stepLabel={`Étape ${i + 1} / 3`} />
             ))}
           </div>
         ) : (

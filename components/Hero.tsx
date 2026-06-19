@@ -40,9 +40,9 @@ export default function Hero() {
       }}
     >
       <style>{`
-        @keyframes hero-particle-pulse {
-          0%, 100% { opacity: 0.25; transform: scale(1); }
-          50% { opacity: 0.85; transform: scale(1.6); }
+        @keyframes hero-gentle-pulse {
+          0%, 100% { opacity: 0.1; transform: scale(1); }
+          50% { opacity: 0.2; transform: scale(1.05); }
         }
         @keyframes hero-pulse-arrow {
           0%, 100% { transform: translateY(0); opacity: 0.6; }
@@ -71,10 +71,12 @@ export default function Hero() {
             height: "8px",
             borderRadius: "50%",
             background: landingColors.accent,
-            boxShadow: `0 0 20px ${landingColors.accent}`,
-            animation: `hero-particle-pulse 3.5s ease-in-out infinite`,
+            opacity: 0.15,
+            boxShadow: `0 0 12px rgba(31, 77, 58, 0.25)`,
+            animation: `hero-gentle-pulse 4s ease-in-out infinite`,
             animationDelay: p.delay,
             pointerEvents: "none",
+            willChange: "transform",
           }}
         />
       ))}

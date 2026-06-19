@@ -43,7 +43,7 @@ function ChoiceCard({
         border: `2px solid ${selected ? colors.accent : colors.border}`,
         background: selected ? "rgba(31,77,58,0.06)" : colors.card,
         color: colors.text,
-        fontSize: "15px",
+        fontSize: "clamp(0.95rem, 3.5vw, 1rem)",
         fontWeight: 600,
         cursor: "pointer",
         fontFamily,
@@ -211,19 +211,57 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div style={{ fontFamily, maxWidth: step === 4 ? "960px" : "640px", margin: "0 auto", width: "100%" }}>
+    <div
+      style={{
+        fontFamily,
+        maxWidth: "100%",
+        width: "100%",
+        minHeight: "100vh",
+        padding: "24px 20px",
+        boxSizing: "border-box",
+        overflowX: "hidden",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: step === 4 ? 960 : 480,
+          margin: "0 auto",
+          width: "100%",
+          boxSizing: "border-box",
+        }}
+      >
       {step < 4 && (
-        <p style={{ margin: "0 0 24px", fontSize: "13px", fontWeight: 600, color: colors.accent }}>
+        <p
+          style={{
+            margin: "0 0 24px",
+            fontSize: "clamp(0.75rem, 3vw, 0.85rem)",
+            fontWeight: 600,
+            color: colors.accent,
+          }}
+        >
           Étape {step} / 4
         </p>
       )}
 
       {step === 1 && (
-        <div style={{ ...cardBase, padding: isMobile ? "24px" : "32px" }}>
-          <h1 style={{ margin: "0 0 8px", fontSize: "26px", fontWeight: 700, color: colors.text }}>
+        <div style={{ ...cardBase, padding: isMobile ? "20px" : "32px", width: "100%", boxSizing: "border-box" }}>
+          <h1
+            style={{
+              margin: "0 0 8px",
+              fontSize: "clamp(1.1rem, 4.5vw, 1.5rem)",
+              fontWeight: 700,
+              color: colors.text,
+            }}
+          >
             Qui tu cibles ?
           </h1>
-          <p style={{ margin: "0 0 24px", fontSize: "14px", color: colors.textMuted }}>
+          <p
+            style={{
+              margin: "0 0 24px",
+              fontSize: "clamp(0.85rem, 3.5vw, 0.95rem)",
+              color: colors.textMuted,
+            }}
+          >
             Choisis le profil qui correspond le mieux à ta cible.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -256,11 +294,24 @@ export default function OnboardingPage() {
       )}
 
       {step === 2 && (
-        <div style={{ ...cardBase, padding: isMobile ? "24px" : "32px" }}>
-          <h1 style={{ margin: "0 0 8px", fontSize: "26px", fontWeight: 700, color: colors.text }}>
+        <div style={{ ...cardBase, padding: isMobile ? "20px" : "32px", width: "100%", boxSizing: "border-box" }}>
+          <h1
+            style={{
+              margin: "0 0 8px",
+              fontSize: "clamp(1.1rem, 4.5vw, 1.5rem)",
+              fontWeight: 700,
+              color: colors.text,
+            }}
+          >
             Quel est ton objectif ce mois-ci ?
           </h1>
-          <p style={{ margin: "0 0 24px", fontSize: "14px", color: colors.textMuted }}>
+          <p
+            style={{
+              margin: "0 0 24px",
+              fontSize: "clamp(0.85rem, 3.5vw, 0.95rem)",
+              color: colors.textMuted,
+            }}
+          >
             On adapte ta stratégie de prospection à ton ambition.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -315,13 +366,15 @@ export default function OnboardingPage() {
         <div
           style={{
             ...cardBase,
-            padding: isMobile ? "32px 24px" : "48px 32px",
+            padding: isMobile ? "24px 20px" : "48px 32px",
             textAlign: "center",
             minHeight: "280px",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
+            width: "100%",
+            boxSizing: "border-box",
           }}
         >
           {loadingPhase === "logs" && (
@@ -341,7 +394,7 @@ export default function OnboardingPage() {
                 key={logIndex}
                 style={{
                   margin: 0,
-                  fontSize: "16px",
+                  fontSize: "clamp(0.9rem, 3.5vw, 1rem)",
                   fontWeight: 600,
                   color: colors.text,
                   animation: "onboarding-fade 0.4s ease",
@@ -356,7 +409,7 @@ export default function OnboardingPage() {
             <p
               style={{
                 margin: 0,
-                fontSize: "18px",
+                fontSize: "clamp(1rem, 4vw, 1.2rem)",
                 fontWeight: 700,
                 color: colors.text,
                 lineHeight: 1.5,
@@ -364,7 +417,16 @@ export default function OnboardingPage() {
               }}
             >
               Nous avons identifié{" "}
-              <span style={{ color: colors.accent }}>{prospectCount.toLocaleString("fr-FR")}</span>{" "}
+              <span
+                style={{
+                  color: colors.accent,
+                  fontSize: "clamp(2rem, 10vw, 4rem)",
+                  display: "inline-block",
+                  lineHeight: 1.1,
+                }}
+              >
+                {prospectCount.toLocaleString("fr-FR")}
+              </span>{" "}
               prospects correspondant à ton profil.
             </p>
           )}
@@ -372,22 +434,26 @@ export default function OnboardingPage() {
       )}
 
       {step === 4 && (
-        <div>
+        <div style={{ width: "100%", boxSizing: "border-box" }}>
           <h1
             style={{
               margin: "0 0 8px",
-              fontSize: isMobile ? "26px" : "32px",
+              fontSize: "clamp(1.2rem, 5vw, 2rem)",
               fontWeight: 800,
               color: colors.text,
               textAlign: "center",
             }}
           >
-            Tes {prospectCount.toLocaleString("fr-FR")} leads t&apos;attendent.
+            Tes{" "}
+            <span style={{ fontSize: "clamp(2rem, 10vw, 4rem)", color: colors.accent }}>
+              {prospectCount.toLocaleString("fr-FR")}
+            </span>{" "}
+            leads t&apos;attendent.
           </h1>
           <p
             style={{
               margin: "0 0 32px",
-              fontSize: "15px",
+              fontSize: "clamp(0.9rem, 3.5vw, 1rem)",
               color: colors.textMuted,
               textAlign: "center",
             }}
@@ -437,7 +503,7 @@ export default function OnboardingPage() {
                 <p style={{ margin: "4px 0 0", fontSize: "13px", color: colors.textMuted }}>
                   {plan.desc}
                 </p>
-                <p style={{ margin: "20px 0 0", fontSize: "32px", fontWeight: 800, color: colors.text }}>
+                <p style={{ margin: "20px 0 0", fontSize: "clamp(1.5rem, 6vw, 2rem)", fontWeight: 800, color: colors.text }}>
                   {plan.price}
                   <span style={{ fontSize: "14px", fontWeight: 500, color: colors.textMuted }}>
                     {plan.period}
@@ -486,6 +552,8 @@ export default function OnboardingPage() {
           </div>
         </div>
       )}
+
+      </div>
 
       <style>{`
         @keyframes onboarding-spin { to { transform: rotate(360deg); } }
