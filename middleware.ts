@@ -33,8 +33,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
+  if (user && pathname.startsWith("/dashboard")) {
+    const { data: config } = await supabase
+      .from("user_configs")
+      .select("onboarding_completed")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const onboardingCompleted = config?.onboarding_completed === true;
+    const isOnboardingRoute = pathname.startsWith("/dashboard/onboarding");
+
+    if (!onboardingCompleted && !isOnboardingRoute) {
+      return NextResponse.redirect(new URL("/dashboard/onboarding", request.url));
+    }
+
+    if (onboardingCompleted && isOnboardingRoute) {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
   if (pathname === "/login" && user) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const { data: config } = await supabase
+      .from("user_configs")
+      .select("onboarding_completed")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const destination = config?.onboarding_completed ? "/dashboard" : "/dashboard/onboarding";
+    return NextResponse.redirect(new URL(destination, request.url));
   }
 
   return supabaseResponse;

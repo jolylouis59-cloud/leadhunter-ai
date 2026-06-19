@@ -62,3 +62,7 @@ alter table public.user_configs add column if not exists competitors text;
 alter table public.user_configs add column if not exists website_url text;
 alter table public.user_configs add column if not exists target_pricing text;
 alter table public.user_configs add column if not exists onboarding_completed boolean default false;
+
+-- Onboarding flow : segment ICP + objectif mensuel
+alter table public.user_configs add column if not exists icp_segment text;
+alter table public.user_configs add column if not exists monthly_goal text;

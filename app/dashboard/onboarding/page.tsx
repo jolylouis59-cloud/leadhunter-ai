@@ -1,39 +1,75 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
+import {
+  getProspectCount,
+  GOAL_OPTIONS,
+  ICP_OPTIONS,
+  LOADING_LOGS,
+  ONBOARDING_PLANS,
+  type IcpSegmentId,
+  type MonthlyGoalId,
+} from "@/lib/onboarding-flow";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-type Step = "profile" | "review";
+type Step = 1 | 2 | 3 | 4;
+type LoadingPhase = "logs" | "result";
+
+function ChoiceCard({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        padding: "18px 20px",
+        borderRadius: "12px",
+        border: `2px solid ${selected ? colors.accent : colors.border}`,
+        background: selected ? "rgba(31,77,58,0.06)" : colors.card,
+        color: colors.text,
+        fontSize: "15px",
+        fontWeight: 600,
+        cursor: "pointer",
+        fontFamily,
+        transition: "border-color 150ms ease, background 150ms ease",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("profile");
+  const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [icpSegment, setIcpSegment] = useState<IcpSegmentId | null>(null);
+  const [monthlyGoal, setMonthlyGoal] = useState<MonthlyGoalId | null>(null);
+  const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>("logs");
+  const [logIndex, setLogIndex] = useState(0);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState("");
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const [productName, setProductName] = useState("");
-  const [productDescription, setProductDescription] = useState("");
-  const [targetAudience, setTargetAudience] = useState("");
-  const [painPoint, setPainPoint] = useState("");
-  const [competitors, setCompetitors] = useState("");
-  const [websiteUrl, setWebsiteUrl] = useState("");
-  const [targetPricing, setTargetPricing] = useState("");
-
-  const [keywords, setKeywords] = useState<string[]>([]);
-  const [subreddits, setSubreddits] = useState<string[]>([]);
-  const [keywordInput, setKeywordInput] = useState("");
-  const [subredditInput, setSubredditInput] = useState("");
+  const prospectCount = getProspectCount(icpSegment);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -47,218 +83,123 @@ export default function OnboardingPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
       if (!user) {
-        setLoading(false);
+        router.replace("/login");
         return;
       }
+
+      setUserId(user.id);
+      setUserEmail(user.email ?? "");
 
       const { data } = await supabase
         .from("user_configs")
-        .select("*")
+        .select("onboarding_completed")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (data) {
-        setProductName(data.product_name ?? "");
-        setProductDescription(data.product_description ?? "");
-        setTargetAudience(data.target_audience ?? data.target ?? "");
-        setPainPoint(data.pain_point ?? "");
-        setCompetitors(data.competitors ?? "");
-        setWebsiteUrl(data.website_url ?? "");
-        setTargetPricing(data.target_pricing ?? "");
-        if (data.keywords?.length) setKeywords(data.keywords);
-        if (data.subreddits?.length) setSubreddits(data.subreddits);
-        if (data.onboarding_completed && data.keywords?.length) {
-          setStep("review");
-        }
-      }
-      setLoading(false);
-    }
-    load();
-  }, []);
-
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: "13px",
-    fontWeight: 600,
-    color: colors.text,
-    marginBottom: "8px",
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "12px 14px",
-    fontSize: "14px",
-    color: colors.text,
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: "8px",
-    outline: "none",
-    fontFamily,
-  };
-
-  const textareaStyle: React.CSSProperties = {
-    ...inputStyle,
-    minHeight: step === "profile" && productDescription === "" ? "120px" : "96px",
-    resize: "vertical",
-    lineHeight: 1.5,
-  };
-
-  const largeTextareaStyle: React.CSSProperties = {
-    ...textareaStyle,
-    minHeight: "140px",
-  };
-
-  function showToast(msg: string) {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
-  }
-
-  function getProfilePayload() {
-    return {
-      productName: productName.trim(),
-      productDescription: productDescription.trim(),
-      targetAudience: targetAudience.trim(),
-      painPoint: painPoint.trim(),
-      competitors: competitors.trim() || undefined,
-      websiteUrl: websiteUrl.trim() || undefined,
-      targetPricing: targetPricing.trim() || undefined,
-    };
-  }
-
-  async function handleGenerate() {
-    const profile = getProfilePayload();
-    if (!profile.productName || !profile.productDescription) {
-      showToast("Remplis au minimum le nom et la description du produit.");
-      return;
-    }
-    if (!profile.targetAudience || !profile.painPoint) {
-      showToast("Remplis la cible et la douleur principale.");
-      return;
-    }
-
-    setGenerating(true);
-    try {
-      const res = await fetch("/api/onboarding/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profile),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showToast(data.error || "Erreur lors de la génération");
+      if (data?.onboarding_completed) {
+        router.replace("/dashboard");
         return;
       }
-      setKeywords(data.keywords ?? []);
-      setSubreddits(data.subreddits ?? []);
-      setStep("review");
-      showToast("Mots-clés et subreddits générés ✓");
-    } catch {
-      showToast("Erreur réseau lors de la génération");
+
+      setLoading(false);
+    }
+
+    load();
+  }, [router]);
+
+  useEffect(() => {
+    if (step !== 3) return;
+
+    setLoadingPhase("logs");
+    setLogIndex(0);
+
+    const intervals: ReturnType<typeof setInterval>[] = [];
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+
+    LOADING_LOGS.forEach((_, index) => {
+      const timeout = setTimeout(() => {
+        setLogIndex(index);
+        if (index === LOADING_LOGS.length - 1) {
+          const resultTimeout = setTimeout(() => setLoadingPhase("result"), 1000);
+          timeouts.push(resultTimeout);
+        }
+      }, index * 1000);
+      timeouts.push(timeout);
+    });
+
+    const advanceTimeout = setTimeout(() => setStep(4), 4500);
+    timeouts.push(advanceTimeout);
+
+    return () => {
+      intervals.forEach(clearInterval);
+      timeouts.forEach(clearTimeout);
+    };
+  }, [step]);
+
+  function showToast(message: string) {
+    setToast(message);
+    setTimeout(() => setToast(null), 4000);
+  }
+
+  async function saveOnboardingAndCheckout(priceId: string, planKey: string) {
+    if (!priceId) {
+      showToast("Price ID Stripe non configuré pour ce plan.");
+      return;
+    }
+
+    if (!userId || !userEmail) {
+      showToast("Session expirée. Reconnecte-toi.");
+      return;
+    }
+
+    if (!icpSegment || !monthlyGoal) {
+      showToast("Complète les étapes précédentes.");
+      return;
+    }
+
+    setCheckoutLoading(planKey);
+
+    try {
+      const { error: saveError } = await supabase.from("user_configs").upsert(
+        {
+          user_id: userId,
+          icp_segment: icpSegment,
+          monthly_goal: monthlyGoal,
+          onboarding_completed: true,
+        },
+        { onConflict: "user_id" }
+      );
+
+      if (saveError) {
+        showToast("Erreur sauvegarde : " + saveError.message);
+        return;
+      }
+
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceId,
+          userId,
+          userEmail,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.url) {
+        showToast(data.error || "Erreur lors de la création du checkout");
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch (e) {
+      showToast("Erreur checkout: " + (e instanceof Error ? e.message : String(e)));
     } finally {
-      setGenerating(false);
+      setCheckoutLoading(null);
     }
-  }
-
-  async function handleSave() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
-
-    if (keywords.length === 0 || subreddits.length === 0) {
-      showToast("Ajoute au moins un mot-clé et un subreddit.");
-      return;
-    }
-
-    setSaving(true);
-    const profile = getProfilePayload();
-
-    const { error } = await supabase.from("user_configs").upsert(
-      {
-        user_id: user.id,
-        product_name: profile.productName,
-        product_description: profile.productDescription,
-        target: profile.targetAudience,
-        target_audience: profile.targetAudience,
-        pain_point: profile.painPoint,
-        competitors: profile.competitors || null,
-        website_url: profile.websiteUrl || null,
-        target_pricing: profile.targetPricing || null,
-        keywords,
-        subreddits,
-        onboarding_completed: true,
-      },
-      { onConflict: "user_id" }
-    );
-
-    setSaving(false);
-
-    if (error) {
-      showToast("Erreur : " + error.message);
-      return;
-    }
-
-    showToast("Profil sauvegardé ✓");
-    router.push("/dashboard");
-    router.refresh();
-  }
-
-  function addKeyword() {
-    const value = keywordInput.trim();
-    if (!value || keywords.includes(value)) return;
-    setKeywords((prev) => [...prev, value]);
-    setKeywordInput("");
-  }
-
-  function addSubreddit() {
-    const value = subredditInput.trim().replace(/^r\//, "");
-    if (!value || subreddits.includes(value)) return;
-    setSubreddits((prev) => [...prev, value]);
-    setSubredditInput("");
-  }
-
-  function renderBadges(items: string[], onRemove: (item: string) => void) {
-    if (items.length === 0) return null;
-    return (
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
-        {items.map((item) => (
-          <span
-            key={item}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "6px 12px",
-              background: colors.oatmeal,
-              border: `1px solid ${colors.border}`,
-              borderRadius: "20px",
-              fontSize: "13px",
-              color: colors.text,
-            }}
-          >
-            {item}
-            <button
-              type="button"
-              onClick={() => onRemove(item)}
-              style={{
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                padding: 0,
-                fontSize: "14px",
-                color: colors.textMuted,
-                lineHeight: 1,
-              }}
-              aria-label={`Retirer ${item}`}
-            >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-    );
   }
 
   if (loading) {
@@ -270,271 +211,75 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div style={{ fontFamily, maxWidth: "720px", margin: "0 auto", width: "100%" }}>
-      <header style={{ marginBottom: isMobile ? "24px" : "32px" }}>
-        <Link
-          href="/dashboard/settings"
-          style={{
-            fontSize: "13px",
-            color: colors.accent,
-            textDecoration: "none",
-            fontWeight: 600,
-          }}
-        >
-          ← Retour aux paramètres
-        </Link>
-        <h1
-          style={{
-            fontSize: isMobile ? "24px" : "28px",
-            fontWeight: 700,
-            color: colors.text,
-            margin: "12px 0 0",
-          }}
-        >
-          Profil client & scanner Reddit
-        </h1>
-        <p style={{ margin: "8px 0 0", fontSize: "13px", color: colors.textMuted, lineHeight: 1.5 }}>
-          * Tu peux demander à une IA (ChatGPT, Claude...) de t&apos;aider à rédiger ces réponses si
-          tu manques d&apos;inspiration — copie-colle simplement ce qu&apos;elle te propose.
+    <div style={{ fontFamily, maxWidth: step === 4 ? "960px" : "640px", margin: "0 auto", width: "100%" }}>
+      {step < 4 && (
+        <p style={{ margin: "0 0 24px", fontSize: "13px", fontWeight: 600, color: colors.accent }}>
+          Étape {step} / 4
         </p>
-      </header>
+      )}
 
-      {step === "profile" && (
-        <div style={{ ...cardBase, padding: isMobile ? "20px" : "28px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div>
-              <label htmlFor="productName" style={labelStyle}>
-                Nom du produit / service
-              </label>
-              <input
-                id="productName"
-                type="text"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                placeholder="Ex: LeadHunter AI"
-                style={inputStyle}
+      {step === 1 && (
+        <div style={{ ...cardBase, padding: isMobile ? "24px" : "32px" }}>
+          <h1 style={{ margin: "0 0 8px", fontSize: "26px", fontWeight: 700, color: colors.text }}>
+            Qui tu cibles ?
+          </h1>
+          <p style={{ margin: "0 0 24px", fontSize: "14px", color: colors.textMuted }}>
+            Choisis le profil qui correspond le mieux à ta cible.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {ICP_OPTIONS.map((option) => (
+              <ChoiceCard
+                key={option.id}
+                label={option.label}
+                selected={icpSegment === option.id}
+                onClick={() => setIcpSegment(option.id)}
               />
-            </div>
-
-            <div>
-              <label htmlFor="productDescription" style={labelStyle}>
-                Description complète
-              </label>
-              <textarea
-                id="productDescription"
-                value={productDescription}
-                onChange={(e) => setProductDescription(e.target.value)}
-                placeholder="Ce que fait ton produit, quel problème il résout, en quoi il est différent…"
-                style={largeTextareaStyle}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="targetAudience" style={labelStyle}>
-                Cible précise
-              </label>
-              <textarea
-                id="targetAudience"
-                value={targetAudience}
-                onChange={(e) => setTargetAudience(e.target.value)}
-                placeholder="Rôle, taille d'entreprise, secteur… Ex: Fondateurs SaaS B2B, 1-10 employés, marketing/growth"
-                style={textareaStyle}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="painPoint" style={labelStyle}>
-                Douleur principale
-              </label>
-              <textarea
-                id="painPoint"
-                value={painPoint}
-                onChange={(e) => setPainPoint(e.target.value)}
-                placeholder="Ce qu'ils tapent quand ils galèrent… Ex: « comment trouver des clients B2B », « outil prospection Reddit »"
-                style={textareaStyle}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="competitors" style={labelStyle}>
-                Concurrents connus <span style={{ fontWeight: 400, color: colors.textMuted }}>(optionnel)</span>
-              </label>
-              <input
-                id="competitors"
-                type="text"
-                value={competitors}
-                onChange={(e) => setCompetitors(e.target.value)}
-                placeholder="Ex: Octolens, Brand24, Mention"
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="websiteUrl" style={labelStyle}>
-                Site web du produit <span style={{ fontWeight: 400, color: colors.textMuted }}>(optionnel)</span>
-              </label>
-              <input
-                id="websiteUrl"
-                type="url"
-                value={websiteUrl}
-                onChange={(e) => setWebsiteUrl(e.target.value)}
-                placeholder="https://tonproduit.com"
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label htmlFor="targetPricing" style={labelStyle}>
-                Budget / pricing cible des prospects{" "}
-                <span style={{ fontWeight: 400, color: colors.textMuted }}>(optionnel)</span>
-              </label>
-              <input
-                id="targetPricing"
-                type="text"
-                value={targetPricing}
-                onChange={(e) => setTargetPricing(e.target.value)}
-                placeholder="Ex: 50-200€/mois, PME avec budget marketing 500€+"
-                style={inputStyle}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={generating}
-              style={{
-                ...primaryButton(false, generating),
-                width: "100%",
-                padding: "14px 24px",
-                fontSize: "15px",
-                fontWeight: 600,
-                fontFamily,
-                marginTop: "8px",
-              }}
-            >
-              {generating ? "Génération en cours…" : "Générer mots-clés & subreddits avec l'IA →"}
-            </button>
+            ))}
           </div>
+          <button
+            type="button"
+            disabled={!icpSegment}
+            onClick={() => setStep(2)}
+            style={{
+              ...primaryButton(false, !icpSegment),
+              width: "100%",
+              marginTop: "24px",
+              padding: "14px 24px",
+              fontSize: "15px",
+              fontWeight: 600,
+              fontFamily,
+            }}
+          >
+            Continuer →
+          </button>
         </div>
       )}
 
-      {step === "review" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <div style={{ ...cardBase, padding: isMobile ? "20px" : "28px" }}>
-            <p style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700, color: colors.text }}>
-              Résultat généré par l&apos;IA
-            </p>
-            <p style={{ margin: "0 0 20px", fontSize: "13px", color: colors.textMuted }}>
-              Ajuste les mots-clés et subreddits avant de sauvegarder. Le scanner Reddit utilisera
-              cette configuration.
-            </p>
-
-            <div style={{ marginBottom: "24px" }}>
-              <label style={labelStyle}>Mots-clés Reddit ({keywords.length})</label>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: isMobile ? "column" : "row",
-                  gap: "10px",
-                }}
-              >
-                <input
-                  type="text"
-                  value={keywordInput}
-                  onChange={(e) => setKeywordInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addKeyword();
-                    }
-                  }}
-                  placeholder="Ajouter un mot-clé…"
-                  style={inputStyle}
-                />
-                <button
-                  type="button"
-                  onClick={addKeyword}
-                  style={{
-                    padding: "12px 18px",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: colors.accent,
-                    background: colors.card,
-                    border: `1px solid ${colors.accent}`,
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontFamily,
-                    flexShrink: 0,
-                  }}
-                >
-                  Ajouter
-                </button>
-              </div>
-              {renderBadges(keywords, (item) =>
-                setKeywords((prev) => prev.filter((k) => k !== item))
-              )}
-            </div>
-
-            <div>
-              <label style={labelStyle}>Subreddits ({subreddits.length})</label>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: isMobile ? "column" : "row",
-                  gap: "10px",
-                }}
-              >
-                <input
-                  type="text"
-                  value={subredditInput}
-                  onChange={(e) => setSubredditInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addSubreddit();
-                    }
-                  }}
-                  placeholder="Ex: SaaS"
-                  style={inputStyle}
-                />
-                <button
-                  type="button"
-                  onClick={addSubreddit}
-                  style={{
-                    padding: "12px 18px",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: colors.accent,
-                    background: colors.card,
-                    border: `1px solid ${colors.accent}`,
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontFamily,
-                    flexShrink: 0,
-                  }}
-                >
-                  Ajouter
-                </button>
-              </div>
-              {renderBadges(subreddits, (item) =>
-                setSubreddits((prev) => prev.filter((s) => s !== item))
-              )}
-            </div>
+      {step === 2 && (
+        <div style={{ ...cardBase, padding: isMobile ? "24px" : "32px" }}>
+          <h1 style={{ margin: "0 0 8px", fontSize: "26px", fontWeight: 700, color: colors.text }}>
+            Quel est ton objectif ce mois-ci ?
+          </h1>
+          <p style={{ margin: "0 0 24px", fontSize: "14px", color: colors.textMuted }}>
+            On adapte ta stratégie de prospection à ton ambition.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {GOAL_OPTIONS.map((option) => (
+              <ChoiceCard
+                key={option.id}
+                label={option.label}
+                selected={monthlyGoal === option.id}
+                onClick={() => setMonthlyGoal(option.id)}
+              />
+            ))}
           </div>
-
-          <div
-            style={{
-              display: "flex",
-              flexDirection: isMobile ? "column" : "row",
-              gap: "12px",
-            }}
-          >
+          <div style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
             <button
               type="button"
-              onClick={() => setStep("profile")}
+              onClick={() => setStep(1)}
               style={{
                 flex: 1,
-                padding: "12px 20px",
+                padding: "14px 20px",
                 fontSize: "14px",
                 fontWeight: 600,
                 color: colors.text,
@@ -545,45 +290,210 @@ export default function OnboardingPage() {
                 fontFamily,
               }}
             >
-              ← Modifier le profil
+              ← Retour
             </button>
             <button
               type="button"
-              onClick={handleGenerate}
-              disabled={generating}
+              disabled={!monthlyGoal}
+              onClick={() => setStep(3)}
               style={{
-                flex: 1,
-                padding: "12px 20px",
-                fontSize: "14px",
-                fontWeight: 600,
-                color: colors.accent,
-                background: colors.card,
-                border: `1px solid ${colors.accent}`,
-                borderRadius: "10px",
-                cursor: generating ? "wait" : "pointer",
-                fontFamily,
-              }}
-            >
-              {generating ? "Régénération…" : "Régénérer avec l'IA"}
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              style={{
-                ...primaryButton(false, saving),
-                flex: 1,
-                padding: "12px 20px",
-                fontSize: "14px",
+                ...primaryButton(false, !monthlyGoal),
+                flex: 2,
+                padding: "14px 24px",
+                fontSize: "15px",
                 fontWeight: 600,
                 fontFamily,
               }}
             >
-              {saving ? "Sauvegarde…" : "Sauvegarder & lancer le scan"}
+              Analyser mon potentiel →
             </button>
           </div>
         </div>
       )}
+
+      {step === 3 && (
+        <div
+          style={{
+            ...cardBase,
+            padding: isMobile ? "32px 24px" : "48px 32px",
+            textAlign: "center",
+            minHeight: "280px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {loadingPhase === "logs" && (
+            <>
+              <div
+                style={{
+                  width: "48px",
+                  height: "48px",
+                  border: `3px solid ${colors.border}`,
+                  borderTopColor: colors.accent,
+                  borderRadius: "50%",
+                  animation: "onboarding-spin 0.9s linear infinite",
+                  marginBottom: "28px",
+                }}
+              />
+              <p
+                key={logIndex}
+                style={{
+                  margin: 0,
+                  fontSize: "16px",
+                  fontWeight: 600,
+                  color: colors.text,
+                  animation: "onboarding-fade 0.4s ease",
+                }}
+              >
+                {LOADING_LOGS[logIndex]}
+              </p>
+            </>
+          )}
+
+          {loadingPhase === "result" && (
+            <p
+              style={{
+                margin: 0,
+                fontSize: "18px",
+                fontWeight: 700,
+                color: colors.text,
+                lineHeight: 1.5,
+                animation: "onboarding-fade 0.5s ease",
+              }}
+            >
+              Nous avons identifié{" "}
+              <span style={{ color: colors.accent }}>{prospectCount.toLocaleString("fr-FR")}</span>{" "}
+              prospects correspondant à ton profil.
+            </p>
+          )}
+        </div>
+      )}
+
+      {step === 4 && (
+        <div>
+          <h1
+            style={{
+              margin: "0 0 8px",
+              fontSize: isMobile ? "26px" : "32px",
+              fontWeight: 800,
+              color: colors.text,
+              textAlign: "center",
+            }}
+          >
+            Tes {prospectCount.toLocaleString("fr-FR")} leads t&apos;attendent.
+          </h1>
+          <p
+            style={{
+              margin: "0 0 32px",
+              fontSize: "15px",
+              color: colors.textMuted,
+              textAlign: "center",
+            }}
+          >
+            Débloque l&apos;accès pour contacter tes prospects qualifiés.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)",
+              gap: "20px",
+            }}
+          >
+            {ONBOARDING_PLANS.map((plan) => (
+              <div
+                key={plan.key}
+                style={{
+                  ...cardBase,
+                  padding: "24px",
+                  position: "relative",
+                  border: plan.popular ? `2px solid ${colors.accent}` : `1px solid ${colors.border}`,
+                  boxShadow: plan.popular ? "0 8px 30px rgba(31,77,58,0.12)" : "none",
+                }}
+              >
+                {plan.popular && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "-10px",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      background: colors.accent,
+                      color: "#FFFFFF",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      padding: "3px 10px",
+                      borderRadius: "20px",
+                    }}
+                  >
+                    POPULAIRE
+                  </span>
+                )}
+                <p style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: colors.text }}>
+                  {plan.name}
+                </p>
+                <p style={{ margin: "4px 0 0", fontSize: "13px", color: colors.textMuted }}>
+                  {plan.desc}
+                </p>
+                <p style={{ margin: "20px 0 0", fontSize: "32px", fontWeight: 800, color: colors.text }}>
+                  {plan.price}
+                  <span style={{ fontSize: "14px", fontWeight: 500, color: colors.textMuted }}>
+                    {plan.period}
+                  </span>
+                </p>
+                <ul style={{ margin: "20px 0 0", padding: 0, listStyle: "none" }}>
+                  {plan.features.map((feature) => (
+                    <li
+                      key={feature}
+                      style={{
+                        fontSize: "13px",
+                        color: colors.textMuted,
+                        padding: "5px 0",
+                        display: "flex",
+                        gap: "8px",
+                      }}
+                    >
+                      <span style={{ color: colors.accent }}>✓</span> {feature}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => saveOnboardingAndCheckout(plan.priceId, plan.key)}
+                  disabled={checkoutLoading !== null}
+                  style={{
+                    ...(plan.popular ? primaryButton(false, checkoutLoading === plan.key) : {}),
+                    marginTop: "24px",
+                    width: "100%",
+                    padding: "12px 16px",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    borderRadius: "8px",
+                    cursor: checkoutLoading !== null ? "wait" : "pointer",
+                    fontFamily,
+                    opacity: checkoutLoading !== null && checkoutLoading !== plan.key ? 0.6 : 1,
+                    background: plan.popular ? colors.accent : "transparent",
+                    color: plan.popular ? "#FFFFFF" : colors.accent,
+                    border: plan.popular ? "none" : `1.5px solid ${colors.accent}`,
+                  }}
+                >
+                  {checkoutLoading === plan.key ? "Redirection…" : "Débloquer mes leads →"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes onboarding-spin { to { transform: rotate(360deg); } }
+        @keyframes onboarding-fade {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
 
       {toast && (
         <div

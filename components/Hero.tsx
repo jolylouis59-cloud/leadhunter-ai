@@ -15,16 +15,15 @@ export default function Hero() {
             </div>
 
             <h1 className="heading mt-6 text-[34px] leading-[1.1] text-brand-text md:text-[58px]">
-              Trouve tes clients B2B sur Reddit, X et LinkedIn
+              Trouve tes clients B2B sans prospecter.
             </h1>
 
             <p className="mt-6 max-w-lg text-lg leading-snug text-brand-muted">
-              LeadHunter AI scanne les 3 plateformes, score l&apos;intention
-              d&apos;achat, et génère une réponse prête à envoyer.
+              On les détecte, tu réponds.
             </p>
 
             <div className="mt-8 max-w-lg">
-              <EmailForm />
+              <EmailForm buttonLabel="Voir mes premiers leads →" />
             </div>
 
             <p className="mt-4 text-sm text-gray-400">
