@@ -38,8 +38,21 @@ export default function Footer() {
           <p style={{ margin: "8px 0 0", fontSize: "14px", color: colors.textMuted }}>
             Trouve tes clients. Pendant que tu dors.
           </p>
+          <p style={{ margin: "16px 0 0", fontSize: "14px", color: colors.textMuted }}>
+            Contact :{" "}
+            <a
+              href="mailto:contact@leadhunterai.fr"
+              style={{
+                color: colors.accent,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              contact@leadhunterai.fr
+            </a>
+          </p>
           <p style={{ margin: "16px 0 0", fontSize: "12px", color: "#9CA3AF" }}>
-            © 2026 LeadHunter AI — contact@leadhunterai.fr
+            © 2026 LeadHunter AI
           </p>
           <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#9CA3AF" }}>
             (Prix HT, TVA applicable selon votre pays)

@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { colors, fontFamily } from "@/lib/dashboard-styles";
 
-const FAQ_ITEMS = [
+const MAILTO_LINK_STYLE: React.CSSProperties = {
+  color: colors.accent,
+  fontWeight: 600,
+  textDecoration: "none",
+};
+
+const FAQ_ITEMS: { q: string; a: ReactNode }[] = [
   {
     q: "Comment LeadHunter AI trouve mes prospects ?",
     a: "On scanne Reddit, LinkedIn et X en temps réel avec des mots-clés liés à ton produit. Chaque post est analysé par notre IA qui lui attribue un Intent Score de 0 à 100 selon la probabilité d'achat.",
@@ -81,8 +87,16 @@ const FAQ_ITEMS = [
     a: "Starter (49€/mois) : 300 leads/mois, scan Reddit. Growth (99€/mois) : 1000 leads/mois, scan Reddit + X + LinkedIn, alertes email. Agency (199€/mois) : illimité, 5 workspaces, API access.",
   },
   {
-    q: "Comment vous contacter si j'ai un problème ?",
-    a: "Par email à contact@leadhunterai.fr ou directement via LinkedIn. On répond sous 24h, souvent beaucoup moins.",
+    q: "Comment vous contacter ?",
+    a: (
+      <>
+        Écrivez-nous à{" "}
+        <a href="mailto:contact@leadhunterai.fr" style={MAILTO_LINK_STYLE}>
+          contact@leadhunterai.fr
+        </a>
+        , on répond rapidement.
+      </>
+    ),
   },
 ];
 
@@ -93,7 +107,7 @@ function FaqItem({
   onToggle,
 }: {
   question: string;
-  answer: string;
+  answer: ReactNode;
   isOpen: boolean;
   onToggle: () => void;
 }) {
