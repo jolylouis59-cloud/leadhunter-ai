@@ -1,3 +1,15 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  containerStyle,
+  landingColors,
+  landingFont,
+  primaryBtnStyle,
+  sectionPadding,
+  sectionTitleStyle,
+} from "@/lib/landing-styles";
+
 const bullets = [
   "Posts optimisés pour Reddit, X et LinkedIn",
   "Adapté à ton produit et ta cible",
@@ -7,49 +19,104 @@ const bullets = [
 const tabs = ["Reddit", "X", "LinkedIn"];
 
 export default function Feature2() {
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   return (
-    <section className="section-padding bg-brand-oatmeal">
-      <div className="container-page">
-        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-          <div className="order-2 lg:order-1">
-            <div className="rounded-xl border border-brand-border bg-white p-5 shadow-md">
-              <div className="flex gap-1 border-b border-brand-border pb-4">
+    <section
+      style={{
+        ...sectionPadding,
+        background: landingColors.dark,
+        fontFamily: landingFont,
+      }}
+    >
+      <div style={containerStyle}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
+            gap: isDesktop ? "64px" : "40px",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ order: isDesktop ? 1 : 2 }}>
+            <div
+              style={{
+                borderRadius: "12px",
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.05)",
+                padding: "20px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  gap: "4px",
+                  paddingBottom: "16px",
+                  borderBottom: "1px solid rgba(255,255,255,0.1)",
+                }}
+              >
                 {tabs.map((tab) => (
                   <span
                     key={tab}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                      tab === "Reddit"
-                        ? "bg-brand-cta text-white"
-                        : "text-brand-muted"
-                    }`}
+                    style={{
+                      borderRadius: "8px",
+                      padding: "6px 12px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      background: tab === "Reddit" ? landingColors.accent : "transparent",
+                      color: tab === "Reddit" ? landingColors.white : landingColors.muted,
+                    }}
                   >
                     {tab}
                   </span>
                 ))}
               </div>
-              <p className="mt-4 text-xs font-medium text-gray-400">Lundi · Post suggéré</p>
-              <p className="mt-2 text-sm leading-relaxed text-brand-text">
-                Voici comment j&apos;ai automatisé ma prospection B2B en 2h/semaine —
-                sans cold email, sans SDR, juste en répondant aux bonnes conversations
-                sur Reddit.
+              <p style={{ margin: "16px 0 0", fontSize: "12px", fontWeight: 500, color: landingColors.muted }}>
+                Lundi · Post suggéré
               </p>
-              <a
-                href="/login"
-                className="btn-primary mt-5 inline-block px-4 py-2 text-xs"
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: "14px",
+                  lineHeight: 1.6,
+                  color: landingColors.white,
+                }}
               >
+                Voici comment j&apos;ai automatisé ma prospection B2B en 2h/semaine — sans cold
+                email, sans SDR, juste en répondant aux bonnes conversations sur Reddit.
+              </p>
+              <a href="/login" style={{ ...primaryBtnStyle, marginTop: "20px", padding: "10px 16px", fontSize: "12px" }}>
                 Générer →
               </a>
             </div>
           </div>
 
-          <div className="order-1 lg:order-2">
-            <h2 className="heading text-3xl text-brand-text md:text-4xl">
+          <div style={{ order: isDesktop ? 2 : 1 }}>
+            <h2 style={{ ...sectionTitleStyle, color: landingColors.white }}>
               Crée du contenu qui attire des clients
             </h2>
-            <ul className="mt-8 space-y-4">
+            <ul style={{ margin: "32px 0 0", padding: 0, listStyle: "none" }}>
               {bullets.map((b) => (
-                <li key={b} className="flex items-start gap-3 text-base font-medium text-brand-muted">
-                  <span className="mt-0.5 shrink-0 font-bold text-brand-cta">✓</span>
+                <li
+                  key={b}
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                    marginBottom: "16px",
+                    fontSize: "16px",
+                    fontWeight: 500,
+                    color: landingColors.muted,
+                  }}
+                >
+                  <span style={{ fontWeight: 700, color: landingColors.accent }}>✓</span>
                   {b}
                 </li>
               ))}

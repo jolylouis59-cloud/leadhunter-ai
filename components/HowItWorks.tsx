@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { colors, fontFamily } from "@/lib/dashboard-styles";
+import {
+  containerStyle,
+  landingColors,
+  landingFont,
+  sectionPadding,
+  sectionTitleStyle,
+} from "@/lib/landing-styles";
 
 const steps = [
   {
@@ -40,43 +46,20 @@ function StepCard({
         flex: mobile ? "0 0 auto" : 1,
         minWidth: mobile ? "80vw" : undefined,
         scrollSnapAlign: mobile ? "center" : undefined,
-        background: colors.card,
-        border: `1px solid ${colors.border}`,
+        background: landingColors.white,
+        border: `1px solid ${landingColors.border}`,
         borderRadius: "12px",
         padding: "32px",
         boxSizing: "border-box",
       }}
     >
-      <span
-        style={{
-          fontSize: "48px",
-          fontWeight: 800,
-          lineHeight: 1,
-          color: colors.accent,
-        }}
-      >
+      <span style={{ fontSize: "48px", fontWeight: 800, lineHeight: 1, color: landingColors.accent }}>
         {num}
       </span>
-      <h3
-        style={{
-          margin: "16px 0 0",
-          fontSize: "18px",
-          fontWeight: 700,
-          color: colors.text,
-        }}
-      >
+      <h3 style={{ margin: "16px 0 0", fontSize: "18px", fontWeight: 700, color: landingColors.text }}>
         {title}
       </h3>
-      <p
-        style={{
-          margin: "8px 0 0",
-          fontSize: "14px",
-          lineHeight: 1.6,
-          color: colors.textMuted,
-        }}
-      >
-        {desc}
-      </p>
+      <p style={{ margin: "8px 0 0", fontSize: "14px", lineHeight: 1.6, color: "#6B7280" }}>{desc}</p>
     </div>
   );
 }
@@ -94,42 +77,25 @@ export default function HowItWorks() {
   return (
     <section
       style={{
-        background: colors.card,
-        padding: "64px 24px",
-        fontFamily,
+        background: landingColors.oatmeal,
+        ...sectionPadding,
+        fontFamily: landingFont,
       }}
     >
-      <style>{`
-        .how-it-works-slider::-webkit-scrollbar {
-          display: none;
-        }
-      `}</style>
-
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        <h2
-          style={{
-            margin: 0,
-            textAlign: "center",
-            fontSize: "clamp(24px, 4vw, 36px)",
-            fontWeight: 800,
-            color: colors.text,
-            letterSpacing: "-0.02em",
-          }}
-        >
+      <div style={containerStyle}>
+        <h2 style={{ ...sectionTitleStyle, color: landingColors.text, textAlign: "center" }}>
           Comment ça marche
         </h2>
 
         {isMobile ? (
           <div
-            className="how-it-works-slider"
             style={{
               marginTop: "40px",
               display: "flex",
               gap: "16px",
-              overflowX: "scroll",
+              overflowX: "auto",
               scrollSnapType: "x mandatory",
               WebkitOverflowScrolling: "touch",
-              touchAction: "pan-x",
               scrollbarWidth: "none",
               msOverflowStyle: "none",
               padding: "4px 0 8px",
@@ -149,27 +115,11 @@ export default function HowItWorks() {
             }}
           >
             <StepCard {...steps[0]} />
-            <span
-              style={{
-                display: "flex",
-                flexShrink: 0,
-                alignItems: "center",
-                fontSize: "24px",
-                color: colors.accent,
-              }}
-            >
+            <span style={{ display: "flex", flexShrink: 0, alignItems: "center", fontSize: "24px", color: landingColors.accent }}>
               →
             </span>
             <StepCard {...steps[1]} />
-            <span
-              style={{
-                display: "flex",
-                flexShrink: 0,
-                alignItems: "center",
-                fontSize: "24px",
-                color: colors.accent,
-              }}
-            >
+            <span style={{ display: "flex", flexShrink: 0, alignItems: "center", fontSize: "24px", color: landingColors.accent }}>
               →
             </span>
             <StepCard {...steps[2]} />

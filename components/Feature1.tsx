@@ -1,3 +1,14 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  containerStyle,
+  landingColors,
+  landingFont,
+  sectionPadding,
+  sectionTitleStyle,
+} from "@/lib/landing-styles";
+
 const bullets = [
   "Scan Reddit, X, LinkedIn avec tes keywords",
   "Intent Score IA 0-100 sur chaque post",
@@ -5,40 +16,115 @@ const bullets = [
 ];
 
 export default function Feature1() {
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
   return (
-    <section id="fonctionnalites" className="section-padding bg-white">
-      <div className="container-page">
-        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+    <section
+      id="fonctionnalites"
+      style={{
+        ...sectionPadding,
+        background: landingColors.white,
+        fontFamily: landingFont,
+      }}
+    >
+      <div style={containerStyle}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr",
+            gap: isDesktop ? "64px" : "40px",
+            alignItems: "center",
+          }}
+        >
           <div>
-            <h2 className="heading text-3xl text-brand-text md:text-4xl">
+            <h2 style={{ ...sectionTitleStyle, color: landingColors.text }}>
               Trouve les prospects qui cherchent ce que tu vends
             </h2>
-            <ul className="mt-8 space-y-4">
+            <ul style={{ margin: "32px 0 0", padding: 0, listStyle: "none" }}>
               {bullets.map((b) => (
-                <li key={b} className="flex items-start gap-3 text-base font-medium text-brand-muted">
-                  <span className="mt-0.5 shrink-0 font-bold text-brand-cta">✓</span>
+                <li
+                  key={b}
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    alignItems: "flex-start",
+                    marginBottom: "16px",
+                    fontSize: "16px",
+                    fontWeight: 500,
+                    color: "#6B7280",
+                  }}
+                >
+                  <span style={{ fontWeight: 700, color: landingColors.accent }}>✓</span>
                   {b}
                 </li>
               ))}
             </ul>
           </div>
 
-          <div className="rounded-xl border border-brand-border bg-white p-5 shadow-md">
-            <div className="flex items-center justify-between border-b border-brand-border pb-4">
-              <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
+          <div
+            style={{
+              borderRadius: "12px",
+              border: `1px solid ${landingColors.border}`,
+              background: landingColors.white,
+              padding: "20px",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.06)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingBottom: "16px",
+                borderBottom: `1px solid ${landingColors.border}`,
+              }}
+            >
+              <span
+                style={{
+                  borderRadius: "999px",
+                  background: "#FFEDD5",
+                  padding: "4px 12px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#C2410C",
+                }}
+              >
                 Reddit
               </span>
-              <span className="animate-pulse-amber rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-700">
+              <span
+                style={{
+                  borderRadius: "999px",
+                  background: "#FEF3C7",
+                  padding: "2px 10px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#B45309",
+                }}
+              >
                 Intent 94%
               </span>
             </div>
-            <p className="mt-4 text-sm leading-relaxed text-brand-muted">
-              &ldquo;Je cherche un outil de prospection B2B qui trouve mes clients sur
-              Reddit automatiquement. Des alternatives à Octolens ?&rdquo;
+            <p style={{ margin: "16px 0 0", fontSize: "14px", lineHeight: 1.6, color: "#6B7280" }}>
+              &ldquo;Je cherche un outil de prospection B2B qui trouve mes clients sur Reddit
+              automatiquement. Des alternatives à Octolens ?&rdquo;
             </p>
             <a
               href="/login"
-              className="mt-5 inline-block text-sm font-semibold text-brand-cta transition-colors hover:text-brand-cta-hover"
+              style={{
+                display: "inline-block",
+                marginTop: "20px",
+                fontSize: "14px",
+                fontWeight: 600,
+                color: landingColors.accent,
+                textDecoration: "none",
+              }}
             >
               Voir la réponse IA →
             </a>

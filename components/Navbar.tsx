@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { openTryLuckModal } from "@/lib/try-luck-events";
+import { useEffect, useState } from "react";
+import { containerStyle, landingColors, landingFont, primaryBtnStyle } from "@/lib/landing-styles";
 
 const links = [
   { label: "Fonctionnalités", href: "#fonctionnalites" },
@@ -11,28 +11,74 @@ const links = [
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const linkColor = scrolled ? landingColors.text : landingColors.white;
+  const mutedLink = scrolled ? "#6B7280" : "rgba(255,255,255,0.85)";
+  const logoTextColor = scrolled ? landingColors.text : landingColors.white;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-brand-border bg-white/95 backdrop-blur-sm">
-      <div className="container-page flex h-16 items-center justify-between">
-        <a href="#" className="flex shrink-0 items-center gap-2.5">
-          <img
-            src="/logo.png"
-            width={36}
-            height={36}
-            alt="LeadHunter AI"
-            style={{ background: "transparent" }}
-          />
-          <span className="text-base font-bold text-brand-text">LeadHunter AI</span>
+    <header
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 50,
+        fontFamily: landingFont,
+        background: scrolled ? "rgba(255,255,255,0.92)" : "transparent",
+        backdropFilter: scrolled ? "blur(20px)" : "none",
+        WebkitBackdropFilter: scrolled ? "blur(20px)" : "none",
+        boxShadow: scrolled ? "0 4px 24px rgba(0,0,0,0.08)" : "none",
+        borderBottom: scrolled ? `1px solid ${landingColors.border}` : "1px solid transparent",
+        transition: "background 250ms ease, box-shadow 250ms ease, border-color 250ms ease",
+      }}
+    >
+      <div
+        style={{
+          ...containerStyle,
+          display: "flex",
+          height: "64px",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <a
+          href="#"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            textDecoration: "none",
+            flexShrink: 0,
+          }}
+        >
+          <img src="/logo.png" width={36} height={36} alt="LeadHunter AI" />
+          <span style={{ fontSize: "16px", fontWeight: 700, color: logoTextColor }}>
+            LeadHunter AI
+          </span>
         </a>
 
-        <div className="hidden items-center gap-6 md:flex">
-          <nav className="flex items-center gap-8">
+        <div style={{ display: "none", alignItems: "center", gap: "24px" }} className="nav-desktop">
+          <style>{`@media (min-width: 768px) { .nav-desktop { display: flex !important; } .nav-mobile-btn { display: none !important; } .nav-mobile-menu { display: none !important; } }`}</style>
+          <nav style={{ display: "flex", alignItems: "center", gap: "32px" }}>
             {links.map((l) => (
               <a
                 key={l.href}
                 href={l.href}
-                className="text-sm font-medium text-brand-muted transition-colors hover:text-brand-text"
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 500,
+                  color: mutedLink,
+                  textDecoration: "none",
+                }}
               >
                 {l.label}
               </a>
@@ -41,33 +87,41 @@ export default function Navbar() {
           <a
             href="/login"
             style={{
-              border: "1.5px solid #1F4D3A",
-              color: "#1F4D3A",
+              border: `1.5px solid ${scrolled ? landingColors.accent : "rgba(255,255,255,0.6)"}`,
+              color: scrolled ? landingColors.accent : landingColors.white,
               borderRadius: "8px",
               padding: "8px 18px",
-              fontWeight: "500",
+              fontWeight: 500,
               textDecoration: "none",
-              marginRight: "12px",
+              fontSize: "14px",
             }}
           >
             Se connecter
           </a>
-          <button
-            type="button"
-            onClick={() => openTryLuckModal()}
-            className="btn-primary px-5 py-3"
-          >
+          <a href="/login" style={{ ...primaryBtnStyle, padding: "12px 20px" }}>
             Commencer gratuitement
-          </button>
+          </a>
         </div>
 
         <button
           type="button"
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-brand-border md:hidden"
+          className="nav-mobile-btn"
           onClick={() => setOpen(!open)}
           aria-label="Menu"
+          style={{
+            display: "flex",
+            height: "40px",
+            width: "40px",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "8px",
+            border: `1px solid ${scrolled ? landingColors.border : "rgba(255,255,255,0.3)"}`,
+            background: "transparent",
+            cursor: "pointer",
+            color: linkColor,
+          }}
         >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             {open ? (
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             ) : (
@@ -78,13 +132,27 @@ export default function Navbar() {
       </div>
 
       {open && (
-        <div className="border-t border-brand-border px-6 py-4 md:hidden">
+        <div
+          className="nav-mobile-menu"
+          style={{
+            borderTop: `1px solid ${landingColors.border}`,
+            padding: "16px 24px 24px",
+            background: scrolled ? "rgba(255,255,255,0.98)" : landingColors.dark,
+          }}
+        >
           {links.map((l) => (
             <a
               key={l.href}
               href={l.href}
-              className="block py-3 text-sm font-medium text-brand-muted"
               onClick={() => setOpen(false)}
+              style={{
+                display: "block",
+                padding: "12px 0",
+                fontSize: "14px",
+                fontWeight: 500,
+                color: scrolled ? landingColors.text : landingColors.white,
+                textDecoration: "none",
+              }}
             >
               {l.label}
             </a>
@@ -96,26 +164,28 @@ export default function Navbar() {
               display: "block",
               marginTop: "12px",
               textAlign: "center",
-              border: "1.5px solid #1F4D3A",
-              color: "#1F4D3A",
+              border: `1.5px solid ${landingColors.accent}`,
+              color: scrolled ? landingColors.accent : landingColors.white,
               borderRadius: "8px",
-              padding: "8px 18px",
-              fontWeight: "500",
+              padding: "10px 18px",
+              fontWeight: 500,
               textDecoration: "none",
             }}
           >
             Se connecter
           </a>
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              openTryLuckModal();
+          <a
+            href="/login"
+            onClick={() => setOpen(false)}
+            style={{
+              ...primaryBtnStyle,
+              display: "block",
+              marginTop: "12px",
+              textAlign: "center",
             }}
-            className="btn-primary mt-3 block w-full text-center"
           >
             Commencer gratuitement
-          </button>
+          </a>
         </div>
       )}
     </header>

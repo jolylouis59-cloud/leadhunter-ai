@@ -5,9 +5,10 @@ import Feature1 from "@/components/Feature1";
 import Feature2 from "@/components/Feature2";
 import HowItWorks from "@/components/HowItWorks";
 import Testimonials from "@/components/Testimonials";
-import TryLuckSection from "@/components/TryLuckSection";
+import FreeTrialSection from "@/components/FreeTrialSection";
 import Pricing from "@/components/Pricing";
 import FinalCTA from "@/components/FinalCTA";
+import ComparisonTable from "@/components/ComparisonTable";
 import FAQ from "@/components/FAQ";
 import Footer from "@/components/Footer";
 
@@ -21,9 +22,10 @@ export default function Home() {
       <Feature2 />
       <HowItWorks />
       <Testimonials />
-      <TryLuckSection />
+      <FreeTrialSection />
       <Pricing />
       <FinalCTA />
+      <ComparisonTable />
       <FAQ />
       <Footer />
     </main>

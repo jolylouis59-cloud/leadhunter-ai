@@ -44,7 +44,7 @@ const FAQ_ITEMS: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Puis-je tester avant de payer ?",
-    a: 'On offre 1 mois gratuit à quelques profils sélectionnés pendant notre phase de lancement. Clique sur "Tenter ma chance" sur la page d\'accueil et réponds à 3 questions. On revient vers toi sous 6 à 12h.',
+    a: "Oui. Tous les plans incluent 7 jours d'essai gratuit, sans carte bancaire. Tu configures ton compte en 2 minutes et les premiers leads arrivent dans l'heure.",
   },
   {
     q: "Comment fonctionne la facturation ?",
@@ -84,7 +84,7 @@ const FAQ_ITEMS: { q: string; a: ReactNode }[] = [
   },
   {
     q: "C'est quoi la différence entre le plan Starter et Growth ?",
-    a: "Starter (49€/mois) : 300 leads/mois, scan Reddit. Growth (99€/mois) : 1000 leads/mois, scan Reddit + X + LinkedIn, alertes email. Agency (199€/mois) : illimité, 5 workspaces, API access.",
+    a: "Starter (49€/mois) : 300 leads/mois, scan Reddit uniquement. Growth (99€/mois) : 1000 leads/mois, scan Reddit + X + LinkedIn, générateur de posts. Agency (199€/mois) : illimité, 5 workspaces, API access.",
   },
   {
     q: "Comment vous contacter ?",
