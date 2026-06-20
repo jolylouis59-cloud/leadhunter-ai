@@ -39,6 +39,50 @@ type IntentResult = {
 
 type ScoredPost = RedditPost & { intentScore: number };
 
+type RedditFetchDetail = {
+  subreddit: string;
+  keyword: string;
+  url: string;
+  status: number;
+  rawCount: number;
+  mappedCount: number;
+  posts: Record<string, unknown>[];
+};
+
+type InsertionError = {
+  title: string;
+  url: string;
+  message: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+};
+
+function buildScoresDistribution(scores: number[]): Record<string, number> {
+  const buckets: Record<string, number> = {
+    "0-14": 0,
+    "15-29": 0,
+    "30-49": 0,
+    "50-69": 0,
+    "70-89": 0,
+    "90-100": 0,
+    "no_score": 0,
+  };
+
+  for (const score of scores) {
+    if (score < 0) {
+      buckets["no_score"]++;
+    } else if (score < 15) buckets["0-14"]++;
+    else if (score < 30) buckets["15-29"]++;
+    else if (score < 50) buckets["30-49"]++;
+    else if (score < 70) buckets["50-69"]++;
+    else if (score < 90) buckets["70-89"]++;
+    else buckets["90-100"]++;
+  }
+
+  return buckets;
+}
+
 function dedupeByTitle(posts: ScoredPost[]): ScoredPost[] {
   const byTitle = new Map<string, ScoredPost>();
 
@@ -129,7 +173,7 @@ function pickScanCombinations(
   return picked;
 }
 
-async function searchReddit(subreddit: string, keyword: string) {
+async function searchReddit(subreddit: string, keyword: string): Promise<RedditFetchDetail> {
   const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=1&sort=new&limit=25&t=week`;
 
   const fetchOnce = () =>
@@ -141,28 +185,47 @@ async function searchReddit(subreddit: string, keyword: string) {
     });
 
   let response = await fetchOnce();
+  let status = response.status;
 
-  if (response.status === 429) {
-    console.log("REDDIT 429 — retry dans 2s:", { subreddit, keyword, url });
+  if (status === 429) {
+    console.log("[REDDIT] 429 — retry dans 2s:", { subreddit, keyword, url });
     await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
     response = await fetchOnce();
+    status = response.status;
   }
 
+  console.log(`[REDDIT] GET ${url} → HTTP ${status}`);
+
   if (!response.ok) {
-    if (response.status === 429) {
-      console.error("REDDIT 429 après retry — combinaison abandonnée:", {
+    if (status === 429) {
+      console.error("[REDDIT] 429 après retry — combinaison abandonnée:", {
         subreddit,
         keyword,
         url,
       });
     } else {
-      console.error("REDDIT JSON ERROR:", { subreddit, keyword, url, status: response.status });
+      console.error("[REDDIT] erreur HTTP:", { subreddit, keyword, url, status });
     }
-    return [];
+    return { subreddit, keyword, url, status, rawCount: 0, mappedCount: 0, posts: [] };
   }
 
   const data = await response.json();
-  return data?.data?.children?.map((child: { data?: Record<string, unknown> }) => child.data) || [];
+  const rawPosts =
+    data?.data?.children?.map((child: { data?: Record<string, unknown> }) => child.data) || [];
+
+  console.log(
+    `[REDDIT] r/${subreddit} "${keyword}" → ${rawPosts.length} posts bruts (HTTP ${status})`
+  );
+
+  return {
+    subreddit,
+    keyword,
+    url,
+    status,
+    rawCount: rawPosts.length,
+    mappedCount: 0,
+    posts: rawPosts.filter(Boolean) as Record<string, unknown>[],
+  };
 }
 
 function mapRedditPost(postData: Record<string, unknown>, subreddit: string): RedditPost | null {
@@ -276,30 +339,63 @@ async function scanSingleCombination(
   subreddit: string,
   keyword: string,
   errors: string[]
-): Promise<{ posts: RedditPost[]; succeeded: boolean; status: number }> {
-  const ctx = { subreddit, keyword };
-  console.log("REDDIT JSON SEARCH:", ctx);
+): Promise<{
+  posts: RedditPost[];
+  fetchDetail: RedditFetchDetail;
+  succeeded: boolean;
+}> {
+  console.log(`[SCAN] tentative r/${subreddit} "${keyword}"`);
 
   try {
-    const rawPosts = await searchReddit(subreddit, keyword);
-    const posts = rawPosts
-      .filter(Boolean)
-      .map((postData: Record<string, unknown>) => mapRedditPost(postData, subreddit))
+    const fetchResult = await searchReddit(subreddit, keyword);
+    const posts = fetchResult.posts
+      .map((postData) => mapRedditPost(postData, subreddit))
       .filter((p: RedditPost | null): p is RedditPost => p !== null);
 
-    console.log(`[SCAN] r/${subreddit} "${keyword}" → ${posts.length} posts trouvés`);
-    return { posts, succeeded: true, status: 200 };
+    const fetchDetail: RedditFetchDetail = {
+      ...fetchResult,
+      mappedCount: posts.length,
+    };
+
+    console.log(
+      `[SCAN] r/${subreddit} "${keyword}" → ${fetchDetail.rawCount} bruts, ${posts.length} mappés (HTTP ${fetchDetail.status})`
+    );
+
+    if (!fetchResult.status || fetchResult.status >= 400) {
+      errors.push(
+        `Reddit HTTP ${fetchResult.status} pour r/${subreddit} "${keyword}" — ${fetchResult.url}`
+      );
+    }
+
+    return {
+      posts,
+      fetchDetail,
+      succeeded: fetchResult.status >= 200 && fetchResult.status < 400,
+    };
   } catch (err) {
     const message = `Erreur r/${subreddit} "${keyword}": ${String(err)}`;
-    console.error("REDDIT JSON ERROR:", { ...ctx, error: String(err) });
+    console.error("[SCAN] erreur:", message);
     errors.push(message);
-    return { posts: [], succeeded: false, status: 500 };
+    return {
+      posts: [],
+      fetchDetail: {
+        subreddit,
+        keyword,
+        url: `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=1&sort=new&limit=25&t=week`,
+        status: 500,
+        rawCount: 0,
+        mappedCount: 0,
+        posts: [],
+      },
+      succeeded: false,
+    };
   }
 }
 
 async function scanWithRateLimit(
   combinations: ScanCombination[],
-  errors: string[]
+  errors: string[],
+  redditFetches: RedditFetchDetail[]
 ): Promise<{
   allPosts: RedditPost[];
   combinationsAttempted: number;
@@ -314,11 +410,7 @@ async function scanWithRateLimit(
 
     try {
       const result = await scanSingleCombination(combo.subreddit, combo.keyword, errors);
-      if (!result.succeeded) {
-        errors.push(
-          `Échec scan r/${combo.subreddit} "${combo.keyword}" (status ${result.status})`
-        );
-      }
+      redditFetches.push(result.fetchDetail);
       if (result.succeeded) combinationsSucceeded++;
       for (const post of result.posts) {
         if (!postsMap.has(post.url)) postsMap.set(post.url, post);
@@ -329,23 +421,19 @@ async function scanWithRateLimit(
         await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
         try {
           const retry = await scanSingleCombination(combo.subreddit, combo.keyword, errors);
-          if (!retry.succeeded) {
-            errors.push(
-              `Échec retry r/${combo.subreddit} "${combo.keyword}" (status ${retry.status})`
-            );
-          }
+          redditFetches.push(retry.fetchDetail);
           if (retry.succeeded) combinationsSucceeded++;
           for (const post of retry.posts) {
             if (!postsMap.has(post.url)) postsMap.set(post.url, post);
           }
         } catch (e) {
           const message = `Combinaison abandonnée après retry r/${combo.subreddit} "${combo.keyword}": ${String(e)}`;
-          console.error(message, combo, e);
+          console.error("[SCAN]", message, combo, e);
           errors.push(message);
         }
       } else {
         const message = `Scan combinaison erreur r/${combo.subreddit} "${combo.keyword}": ${String(error)}`;
-        console.error(message, combo, error);
+        console.error("[SCAN]", message, combo, error);
         errors.push(message);
       }
     }
@@ -365,6 +453,10 @@ async function scanWithRateLimit(
 export async function POST(req: Request) {
   const debug = new URL(req.url).searchParams.get("debug") === "true";
   const scanErrors: string[] = [];
+  const redditFetches: RedditFetchDetail[] = [];
+  const insertionErrors: InsertionError[] = [];
+  const scoredPostsLog: { title: string; subreddit: string; score: number; aboveThreshold: boolean; url: string }[] = [];
+  const allScores: number[] = [];
 
   const supabase = createClient();
 
@@ -386,6 +478,11 @@ export async function POST(req: Request) {
   const { keywords, subreddits } = config;
 
   console.log("[SCAN START] keywords:", keywords, "subreddits:", subreddits);
+  console.log("[SCAN START] seuil minimum score:", MIN_INTENT_SCORE_TO_INSERT);
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error("[SCAN START] ANTHROPIC_API_KEY manquante — scoring impossible");
+    scanErrors.push("ANTHROPIC_API_KEY manquante — scoring impossible");
+  }
 
   const combinations = pickScanCombinations(
     subreddits,
@@ -400,8 +497,14 @@ export async function POST(req: Request) {
     pairs: combinations.map((c) => `r/${c.subreddit} + "${c.keyword}"`),
   });
 
+  console.log("[SCAN] combinaisons à scanner:", combinations.length, combinations);
+
   const { allPosts, combinationsAttempted, combinationsSucceeded } =
-    await scanWithRateLimit(combinations, scanErrors);
+    await scanWithRateLimit(combinations, scanErrors, redditFetches);
+
+  console.log(
+    `[SCAN] Reddit terminé — ${combinationsAttempted} combinaisons, ${allPosts.length} posts uniques`
+  );
   const postUrls = allPosts.map((p) => p.url);
 
   let existingUrls = new Set<string>();
@@ -422,11 +525,17 @@ export async function POST(req: Request) {
   const newPosts = allPosts.filter((p) => !existingUrls.has(p.url));
   const postsToScore = newPosts.slice(0, MAX_POSTS_TO_SCORE);
 
+  console.log("[SCAN] dédoublonnage:", {
+    posts_total: allPosts.length,
+    deja_en_base: existingUrls.size,
+    nouveaux: newPosts.length,
+    a_scorer: postsToScore.length,
+  });
+
   let insertCount = 0;
   let scoredCount = 0;
   let belowThreshold = 0;
   const scoredAboveThreshold: ScoredPost[] = [];
-  const samplePosts: { title: string; subreddit: string; score: number; url: string }[] = [];
 
   for (let i = 0; i < postsToScore.length; i++) {
     const post = postsToScore[i];
@@ -437,26 +546,35 @@ export async function POST(req: Request) {
     scoredCount++;
 
     if (!intent) {
-      console.log("CLAUDE NO INTENT:", { title: post.title, url: post.url });
+      console.log("[SCORE] Claude sans score:", { title: post.title, url: post.url });
       scanErrors.push(`Claude sans score: "${post.title?.substring(0, 50)}"`);
+      allScores.push(-1);
+      scoredPostsLog.push({
+        title: post.title,
+        subreddit: post.subreddit,
+        score: -1,
+        aboveThreshold: false,
+        url: post.url,
+      });
       continue;
     }
 
     const intentScore = intent.score;
-    console.log(`[SCORE] Post "${post.title?.substring(0, 50)}" → score: ${intentScore}`);
+    const aboveThreshold = intentScore >= MIN_INTENT_SCORE_TO_INSERT;
+    allScores.push(intentScore);
+    scoredPostsLog.push({
+      title: post.title,
+      subreddit: post.subreddit,
+      score: intentScore,
+      aboveThreshold,
+      url: post.url,
+    });
 
-    if (samplePosts.length < 3) {
-      samplePosts.push({
-        title: post.title,
-        subreddit: post.subreddit,
-        score: intentScore,
-        url: post.url,
-      });
-    }
+    console.log(
+      `[SCORE] "${post.title?.substring(0, 50)}" → ${intentScore} (seuil ${MIN_INTENT_SCORE_TO_INSERT}, retenu: ${aboveThreshold})`
+    );
 
-    const willInsert = intentScore >= MIN_INTENT_SCORE_TO_INSERT;
-
-    if (!willInsert) {
+    if (!aboveThreshold) {
       belowThreshold++;
       continue;
     }
@@ -476,7 +594,7 @@ export async function POST(req: Request) {
   });
 
   for (const post of postsToInsert) {
-    console.log("INSERTING LEADS FOR USER:", userId);
+    console.log("[INSERT] tentative:", { userId, title: post.title, url: post.url, score: post.intentScore });
     const { data: inserted, error: insertError } = await supabase.from("leads").upsert(
       {
         user_id: userId,
@@ -495,23 +613,26 @@ export async function POST(req: Request) {
       }
     );
 
-    console.log("UPSERT RESULT:", {
+    console.log("[INSERT] résultat:", {
       postUrl: post.url,
       title: post.title,
+      ok: !insertError,
       inserted: inserted ?? null,
-      insertError: insertError ?? null,
+      error: insertError ?? null,
     });
 
     if (insertError) {
-      const message = `Insert échoué "${post.title?.substring(0, 50)}": ${insertError.message}`;
-      console.error("INSERT ERROR:", {
-        postUrl: post.url,
+      const errDetail: InsertionError = {
         title: post.title,
+        url: post.url,
         message: insertError.message,
         code: insertError.code,
         details: insertError.details,
         hint: insertError.hint,
-      });
+      };
+      insertionErrors.push(errDetail);
+      const message = `Insert échoué "${post.title?.substring(0, 50)}": ${insertError.message} (code: ${insertError.code})`;
+      console.error("[INSERT] erreur Supabase:", errDetail);
       scanErrors.push(message);
     } else {
       insertCount++;
@@ -522,6 +643,12 @@ export async function POST(req: Request) {
     combinations_attempted: combinationsAttempted,
     combinations_succeeded: combinationsSucceeded,
     combinations_failed: combinationsAttempted - combinationsSucceeded,
+    min_score_threshold: MIN_INTENT_SCORE_TO_INSERT,
+    posts_found_total: allPosts.length,
+    posts_already_in_db: existingUrls.size,
+    posts_new: newPosts.length,
+    posts_scored: scoredCount,
+    posts_above_threshold: scoredAboveThreshold.length,
     leads_found: allPosts.length,
     leads_inserted: insertCount,
     leads_scored: scoredCount,
@@ -530,7 +657,7 @@ export async function POST(req: Request) {
 
   const totalPosts = allPosts.length;
 
-  console.log("SCAN SUMMARY:", scanSummary);
+  console.log("[SCAN SUMMARY]", scanSummary);
 
   const responseBody: Record<string, unknown> = {
     success: true,
@@ -539,16 +666,39 @@ export async function POST(req: Request) {
     message:
       insertCount > 0
         ? `${insertCount} leads trouvés`
-        : "Aucun lead au-dessus du seuil",
+        : allPosts.length === 0
+          ? "Aucun post Reddit trouvé pour ces mots-clés/subreddits"
+          : newPosts.length === 0
+            ? "Posts trouvés mais déjà en base"
+            : scoredCount === 0
+              ? "Posts trouvés mais scoring Claude échoué"
+              : "Aucun lead au-dessus du seuil",
     ...scanSummary,
   };
 
   if (debug) {
     responseBody.debug = {
-      combinationsScanned: combinationsAttempted,
-      postsFound: allPosts.length,
-      postsAboveThreshold: scoredAboveThreshold.length,
-      samplePosts,
+      keywords,
+      subreddits,
+      combinations_selected: combinations,
+      combinations_attempted: combinationsAttempted,
+      combinations_succeeded: combinationsSucceeded,
+      min_score_threshold: MIN_INTENT_SCORE_TO_INSERT,
+      posts_found_total: allPosts.length,
+      posts_already_in_db: existingUrls.size,
+      posts_new: newPosts.length,
+      posts_scored: scoredCount,
+      posts_above_threshold: scoredAboveThreshold.length,
+      scores_distribution: buildScoresDistribution(allScores),
+      reddit_fetches: redditFetches.map(({ posts: _p, ...rest }) => rest),
+      scored_posts: scoredPostsLog,
+      samplePosts: scoredPostsLog.slice(0, 3).map(({ title, subreddit, score, url }) => ({
+        title,
+        subreddit,
+        score,
+        url,
+      })),
+      insertion_errors: insertionErrors,
       errors: scanErrors,
     };
   }
