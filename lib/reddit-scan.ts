@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchRedditRss } from "@/lib/reddit-rss";
 
 const DEFAULT_CONFIG = {
   product_description: "outil de prospection B2B automatisé",
@@ -130,52 +131,52 @@ async function fetchUserConfig(
   }
 }
 
-async function searchReddit(subreddit: string, keyword: string) {
-  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=1&sort=new&limit=25&t=week`;
-
-  const fetchOnce = () =>
-    fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; LeadHunterAI/1.0)",
-      },
-      cache: "no-store",
-    });
-
-  let response = await fetchOnce();
-
-  if (response.status === 429) {
-    await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
-    response = await fetchOnce();
-  }
-
-  if (!response.ok) return [];
-
-  const data = await response.json();
-  return data?.data?.children?.map((child: { data?: Record<string, unknown> }) => child.data) || [];
-}
-
 async function fetchRedditPosts(
   subreddit: string,
   keyword: string,
   logs: ScanLogs
 ): Promise<RedditPost[]> {
-  logDebug(logs, `Scanning r/${subreddit} keyword="${keyword}"`);
+  logDebug(logs, `Scanning r/${subreddit} keyword="${keyword}" (RSS)`);
 
   try {
-    const rawPosts = await searchReddit(subreddit, keyword);
+    const result = await fetchRedditRss(subreddit, keyword, {
+      rateLimitRetryMs: REDDIT_RATE_LIMIT_RETRY_MS,
+    });
 
-    const posts = rawPosts
-      .filter(Boolean)
-      .map((postData: Record<string, unknown>) => ({
-        title: String(postData.title ?? ""),
-        selftext: String(postData.selftext ?? ""),
-        score: Number(postData.score ?? 0),
-        permalink: String(postData.permalink ?? ""),
-        subreddit: String(postData.subreddit ?? subreddit),
-        author: String(postData.author ?? ""),
-        created_utc: Number(postData.created_utc ?? 0),
-      }))
-      .filter((p: any) => p.title && p.permalink);
+    logDebug(
+      logs,
+      `Reddit r/${subreddit} "${keyword}" → HTTP ${result.status}, ${result.posts.length} posts`
+    );
+
+    if (result.status >= 400) {
+      logError(
+        logs,
+        `Reddit RSS error r/${subreddit}/${keyword}: ${result.status} ${result.errorBodyPreview?.slice(0, 200) ?? ""}`
+      );
+      return [];
+    }
+
+    const posts = result.posts
+      .map((post) => {
+        let permalink = "";
+        try {
+          const parsed = new URL(post.url);
+          permalink = parsed.pathname;
+        } catch {
+          permalink = post.url.replace(/^https?:\/\/(www\.)?reddit\.com/i, "") || "";
+        }
+
+        return {
+          title: post.title,
+          selftext: post.selftext,
+          score: 1,
+          permalink,
+          subreddit: post.subreddit || subreddit,
+          author: post.author,
+          created_utc: 0,
+        };
+      })
+      .filter((p) => p.title && p.permalink);
 
     logDebug(logs, `Posts found for r/${subreddit} "${keyword}": ${posts.length}`);
 

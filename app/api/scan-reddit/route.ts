@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
+import {
+  fetchRedditRss,
+  REDDIT_RSS_HEADERS,
+  type RedditRssFetchResult,
+} from "@/lib/reddit-rss";
 
 const REDDIT_REQUEST_DELAY_MS = 500;
 const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
@@ -39,15 +44,7 @@ type IntentResult = {
 
 type ScoredPost = RedditPost & { intentScore: number };
 
-type RedditFetchDetail = {
-  subreddit: string;
-  keyword: string;
-  url: string;
-  status: number;
-  rawCount: number;
-  mappedCount: number;
-  posts: Record<string, unknown>[];
-};
+type RedditFetchDetail = Omit<RedditRssFetchResult, "posts"> & { mappedCount: number };
 
 type InsertionError = {
   title: string;
@@ -173,78 +170,43 @@ function pickScanCombinations(
   return picked;
 }
 
-async function searchReddit(subreddit: string, keyword: string): Promise<RedditFetchDetail> {
-  const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=1&sort=new&limit=25&t=week`;
+async function searchReddit(subreddit: string, keyword: string): Promise<{
+  fetchDetail: RedditFetchDetail;
+  posts: RedditPost[];
+}> {
+  console.log("[REDDIT] headers envoyés:", JSON.stringify(REDDIT_RSS_HEADERS));
 
-  const fetchOnce = () =>
-    fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; LeadHunterAI/1.0)",
-      },
-      cache: "no-store",
+  const result = await fetchRedditRss(subreddit, keyword, {
+    rateLimitRetryMs: REDDIT_RATE_LIMIT_RETRY_MS,
+  });
+
+  console.log(`[REDDIT] GET ${result.url} → HTTP ${result.status}`);
+
+  if (!result.status || result.status >= 400) {
+    console.error("[REDDIT] erreur HTTP:", {
+      subreddit,
+      keyword,
+      url: result.url,
+      status: result.status,
+      bodyPreview: result.errorBodyPreview,
     });
-
-  let response = await fetchOnce();
-  let status = response.status;
-
-  if (status === 429) {
-    console.log("[REDDIT] 429 — retry dans 2s:", { subreddit, keyword, url });
-    await sleep(REDDIT_RATE_LIMIT_RETRY_MS);
-    response = await fetchOnce();
-    status = response.status;
+  } else {
+    console.log(
+      `[REDDIT] r/${subreddit} "${keyword}" → ${result.rawCount} posts RSS (HTTP ${result.status})`
+    );
   }
 
-  console.log(`[REDDIT] GET ${url} → HTTP ${status}`);
-
-  if (!response.ok) {
-    if (status === 429) {
-      console.error("[REDDIT] 429 après retry — combinaison abandonnée:", {
-        subreddit,
-        keyword,
-        url,
-      });
-    } else {
-      console.error("[REDDIT] erreur HTTP:", { subreddit, keyword, url, status });
-    }
-    return { subreddit, keyword, url, status, rawCount: 0, mappedCount: 0, posts: [] };
-  }
-
-  const data = await response.json();
-  const rawPosts =
-    data?.data?.children?.map((child: { data?: Record<string, unknown> }) => child.data) || [];
-
-  console.log(
-    `[REDDIT] r/${subreddit} "${keyword}" → ${rawPosts.length} posts bruts (HTTP ${status})`
-  );
-
-  return {
-    subreddit,
-    keyword,
-    url,
-    status,
-    rawCount: rawPosts.length,
-    mappedCount: 0,
-    posts: rawPosts.filter(Boolean) as Record<string, unknown>[],
+  const fetchDetail: RedditFetchDetail = {
+    subreddit: result.subreddit,
+    keyword: result.keyword,
+    url: result.url,
+    status: result.status,
+    rawCount: result.rawCount,
+    mappedCount: result.posts.length,
+    errorBodyPreview: result.errorBodyPreview,
   };
-}
 
-function mapRedditPost(postData: Record<string, unknown>, subreddit: string): RedditPost | null {
-  const title = String(postData.title ?? "").trim();
-  const permalink = String(postData.permalink ?? "");
-  const url = permalink ? `https://reddit.com${permalink}` : String(postData.url ?? "");
-  if (!title || !url) return null;
-
-  const selftextRaw = String(postData.selftext ?? "");
-  const selftext =
-    selftextRaw.length > 200 ? selftextRaw.slice(0, 200).trim() + "…" : selftextRaw;
-
-  return {
-    title,
-    author: String(postData.author ?? ""),
-    url,
-    subreddit: String(postData.subreddit ?? subreddit),
-    selftext,
-  };
+  return { fetchDetail, posts: result.posts };
 }
 
 async function fetchUserConfig(supabase: ReturnType<typeof createClient>, userId: string) {
@@ -347,30 +309,22 @@ async function scanSingleCombination(
   console.log(`[SCAN] tentative r/${subreddit} "${keyword}"`);
 
   try {
-    const fetchResult = await searchReddit(subreddit, keyword);
-    const posts = fetchResult.posts
-      .map((postData) => mapRedditPost(postData, subreddit))
-      .filter((p: RedditPost | null): p is RedditPost => p !== null);
-
-    const fetchDetail: RedditFetchDetail = {
-      ...fetchResult,
-      mappedCount: posts.length,
-    };
+    const { posts, fetchDetail } = await searchReddit(subreddit, keyword);
 
     console.log(
       `[SCAN] r/${subreddit} "${keyword}" → ${fetchDetail.rawCount} bruts, ${posts.length} mappés (HTTP ${fetchDetail.status})`
     );
 
-    if (!fetchResult.status || fetchResult.status >= 400) {
+    if (fetchDetail.status >= 400) {
       errors.push(
-        `Reddit HTTP ${fetchResult.status} pour r/${subreddit} "${keyword}" — ${fetchResult.url}`
+        `Reddit HTTP ${fetchDetail.status} pour r/${subreddit} "${keyword}" — ${fetchDetail.url}${fetchDetail.errorBodyPreview ? ` — ${fetchDetail.errorBodyPreview.slice(0, 120)}` : ""}`
       );
     }
 
     return {
       posts,
       fetchDetail,
-      succeeded: fetchResult.status >= 200 && fetchResult.status < 400,
+      succeeded: fetchDetail.status >= 200 && fetchDetail.status < 400,
     };
   } catch (err) {
     const message = `Erreur r/${subreddit} "${keyword}": ${String(err)}`;
@@ -381,11 +335,10 @@ async function scanSingleCombination(
       fetchDetail: {
         subreddit,
         keyword,
-        url: `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.json?q=${encodeURIComponent(keyword)}&restrict_sr=1&sort=new&limit=25&t=week`,
+        url: `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/search.rss?q=${encodeURIComponent(keyword)}&sort=new&limit=25`,
         status: 500,
         rawCount: 0,
         mappedCount: 0,
-        posts: [],
       },
       succeeded: false,
     };
@@ -690,7 +643,9 @@ export async function POST(req: Request) {
       posts_scored: scoredCount,
       posts_above_threshold: scoredAboveThreshold.length,
       scores_distribution: buildScoresDistribution(allScores),
-      reddit_fetches: redditFetches.map(({ posts: _p, ...rest }) => rest),
+      reddit_fetches: redditFetches,
+      reddit_endpoint: "search.rss",
+      reddit_headers: REDDIT_RSS_HEADERS,
       scored_posts: scoredPostsLog,
       samplePosts: scoredPostsLog.slice(0, 3).map(({ title, subreddit, score, url }) => ({
         title,
