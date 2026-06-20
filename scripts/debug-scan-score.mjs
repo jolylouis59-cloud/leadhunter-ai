@@ -6,9 +6,12 @@ import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { XMLParser } from "fast-xml-parser";
+import {
+  buildIntentScorePrompt,
+  MIN_INTENT_SCORE_TO_INSERT,
+} from "../lib/intent-score-prompt.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIN_INTENT_SCORE_TO_INSERT = 25;
 const MODEL = "claude-haiku-4-5-20251001";
 
 const env = Object.fromEntries(
@@ -76,18 +79,13 @@ async function scoreWithClaude(post) {
       messages: [
         {
           role: "user",
-          content: `Tu es expert en détection d'intention d'achat B2B.
-
-Produit : ${config.product_description}
-Cible : ${config.target}
-
-Post Reddit :
-Titre : ${post.title}
-Contenu : ${post.selftext || ""}
-
-Donne un Intent Score de 0 à 100 (100 = cherche activement une solution).
-Réponds UNIQUEMENT avec ce JSON sans texte autour :
-{"score": 75, "reason": "L'auteur cherche activement un outil de prospection"}`,
+          content: buildIntentScorePrompt({
+            productDescription: config.product_description,
+            target: config.target,
+            title: post.title,
+            selftext: post.selftext || "",
+            subreddit: post.subreddit,
+          }),
         },
       ],
     }),
@@ -108,7 +106,8 @@ Réponds UNIQUEMENT avec ce JSON sans texte autour :
 }
 
 const posts = await fetchRssPosts("entrepreneur", "lead generation", 5);
-console.log(`\nFetched ${posts.length} posts from Reddit RSS\n`);
+console.log(`\nFetched ${posts.length} posts from Reddit RSS`);
+console.log(`Seuil minimum (prod): ${MIN_INTENT_SCORE_TO_INSERT}\n`);
 
 for (let i = 0; i < posts.length; i++) {
   const post = posts[i];

@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchRedditRss } from "@/lib/reddit-rss";
+import {
+  buildIntentScorePrompt,
+  MIN_INTENT_SCORE_TO_INSERT,
+} from "@/lib/intent-score-prompt";
 
 const DEFAULT_CONFIG = {
   product_description: "outil de prospection B2B automatisé",
@@ -19,7 +23,6 @@ const CLAUDE_DELAY_MS = 500;
 const REDDIT_REQUEST_DELAY_MS = 500;
 const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
 const MAX_COMBINATIONS_PER_SCAN = 20;
-const MIN_INTENT_SCORE_TO_INSERT = 25;
 
 type ScanCombination = { subreddit: string; keyword: string };
 
@@ -213,24 +216,13 @@ async function scoreWithClaude(
         messages: [
           {
             role: "user",
-            content: `Tu es expert en détection d'intention d'achat B2B.
-
-Produit : ${config.product_description}
-Cible : ${config.target}
-
-Post Reddit de r/${subreddit} :
-Titre : ${post.title}
-Contenu : ${post.selftext?.slice(0, 500) || ""}
-
-Donne un Intent Score de 0 à 100 (100 = cherche activement une solution).
-
-Règles de scoring :
-- Score > 70 uniquement si intention d'achat explicite : cherche un outil, compare des solutions, demande des recommandations.
-- Score < 40 si partage d'expérience, storytelling ou article de blog sans demande claire.
-- Si le post est un article de blog, un témoignage ou un partage d'expérience sans demande explicite d'outil, donne un score inférieur à 30.
-
-Réponds UNIQUEMENT avec ce JSON sans texte autour :
-{"score": 75, "reason": "L'auteur cherche activement un outil de prospection"}`,
+            content: buildIntentScorePrompt({
+              productDescription: config.product_description,
+              target: config.target,
+              title: post.title,
+              selftext: post.selftext?.slice(0, 500) || "",
+              subreddit,
+            }),
           },
         ],
       }),
