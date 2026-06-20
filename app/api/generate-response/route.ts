@@ -21,7 +21,8 @@ Si tu veux tester, on offre 7 jours gratuits sans CB. Je peux t'envoyer le lien 
 
 async function generateReplyWithClaude(
   lead: Parameters<typeof buildReplyPrompt>[0],
-  config: ReplyConfig
+  config: ReplyConfig,
+  prompt: string
 ): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -36,7 +37,7 @@ async function generateReplyWithClaude(
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 400,
-      messages: [{ role: "user", content: buildReplyPrompt(lead, config) }],
+      messages: [{ role: "user", content: prompt }],
     }),
   });
 
@@ -108,8 +109,18 @@ export async function POST(request: Request) {
   };
 
   const title = lead.post_title ?? lead.title ?? "";
+  const prompt = buildReplyPrompt(lead, config);
+
+  console.log("[GENERATE-RESPONSE] config:", config);
+  console.log("[GENERATE-RESPONSE] prompt:", prompt);
+
+  const claudeResponse = await generateReplyWithClaude(lead, config, prompt);
+  if (!claudeResponse) {
+    console.warn("[GENERATE-RESPONSE] fallback used (Claude unavailable or empty response)");
+  }
+
   const response =
-    (await generateReplyWithClaude(lead, config)) ??
+    claudeResponse ??
     buildFallbackResponse(title, lead.subreddit, lead.author ?? lead.username);
 
   const { error: updateError } = await supabase

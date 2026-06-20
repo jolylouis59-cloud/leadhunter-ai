@@ -55,12 +55,36 @@ const CLOSING_INSTRUCTIONS: Record<Exclude<ResponseClosingStyle, "other">, strin
 
 const LINK_FREQUENCY_INSTRUCTIONS: Record<ResponseLinkFrequency, string> = {
   always:
-    "Fréquence du lien : tu DOIS inclure le lien fourni dans ta réponse (une seule fois, de façon naturelle).",
+    "Fréquence du lien : inclure le lien fourni dans la réponse (une seule fois, de façon naturelle).",
   if_relevant:
-    "Fréquence du lien : n'inclus le lien que si le contexte du post rend sa mention pertinente et non forcée. Sinon, termine sans lien.",
+    "Fréquence du lien : inclure le lien uniquement si le contexte du post le rend pertinent.",
   never:
-    "Fréquence du lien : n'inclus AUCUN lien URL dans ta réponse. Concentre-toi sur la valeur et la relation.",
+    "Fréquence du lien : n'inclus aucun lien URL dans la réponse.",
 };
+
+const LINK_RELEVANCE_PATTERNS = [
+  /\b(vs|versus)\b/i,
+  /\bcompar(e|r|aison|ons|er|atif)\b/i,
+  /\balternative/i,
+  /\brecommand/i,
+  /\brecommend/i,
+  /\bquel\s+(outil|logiciel|saas|tool|software|app)/i,
+  /\b(which|best|meilleur(e)?)\s+(outil|tool|software|saas|app)/i,
+  /\boutils?\s+(de|pour|for)\b/i,
+  /\btools?\s+(for|to)\b/i,
+  /\bstack\b/i,
+  /\bsubstitut/i,
+  /\breplace\b/i,
+  /\blooking\s+for\s+(a\s+)?(tool|software|solution)/i,
+  /\bcherche\s+(un\s+)?(outil|logiciel|solution)/i,
+  /\bsuggestions?\b/i,
+  /\bdes\s+recommandations?\b/i,
+];
+
+export function isLinkContextRelevant(lead: ReplyLead): boolean {
+  const text = `${lead.post_title ?? lead.title ?? ""} ${lead.post_body ?? ""}`;
+  return LINK_RELEVANCE_PATTERNS.some((pattern) => pattern.test(text));
+}
 
 function resolveGoalInstruction(config: ReplyConfig): string {
   const goal = config.response_goal;
@@ -71,6 +95,29 @@ function resolveGoalInstruction(config: ReplyConfig): string {
     return `Objectif principal (personnalisé) : ${config.response_goal_other.trim()}`;
   }
   return GOAL_INSTRUCTIONS[goal] || GOAL_INSTRUCTIONS.visit_site;
+}
+
+function resolveGoalPriority(config: ReplyConfig): string | null {
+  const goal = config.response_goal;
+  if (!goal) return null;
+
+  if (goal === "other" && config.response_goal_other?.trim()) {
+    return `Ta réponse DOIT respecter cet objectif personnalisé : ${config.response_goal_other.trim()}`;
+  }
+
+  const priorities: Record<ResponseGoal, string> = {
+    visit_site:
+      "Ta réponse DOIT inciter explicitement à visiter le site ou le lien fourni. L'appel à visiter doit être clair, pas implicite.",
+    contact_dm:
+      "Ta réponse DOIT inviter explicitement à te contacter en message privé (DM) pour en savoir plus.",
+    book_call:
+      "Ta réponse DOIT inviter explicitement à réserver un appel ou une démo.",
+    waitlist:
+      'Ta réponse DOIT inviter explicitement à rejoindre la liste d\'attente ou la newsletter. Mentionne clairement « liste d\'attente » ou « newsletter ».',
+    other: "",
+  };
+
+  return priorities[goal] || null;
 }
 
 function resolveClosingInstruction(config: ReplyConfig): string {
@@ -87,7 +134,28 @@ function resolveClosingInstruction(config: ReplyConfig): string {
   return CLOSING_INSTRUCTIONS[style];
 }
 
-function resolveLinkInstruction(config: ReplyConfig): string {
+function resolveClosingPriority(config: ReplyConfig): string | null {
+  const style = config.response_closing_style;
+  if (!style) return null;
+
+  if (style === "other" && config.response_closing_other?.trim()) {
+    return `Respecte impérativement ce style de closing personnalisé : ${config.response_closing_other.trim()}`;
+  }
+  if (style === "other") return null;
+
+  const priorities: Record<Exclude<ResponseClosingStyle, "other">, string> = {
+    soft:
+      "Termine par une suggestion légère et discrète, sans pression. Pas d'appel à l'action agressif.",
+    direct:
+      "Termine par une proposition claire et une action explicite (lien, essai, inscription). Tu peux poser une question, mais elle doit accompagner l'action, jamais la remplacer. Ne termine JAMAIS uniquement par une question sans proposition concrète.",
+    consultative:
+      "Termine en proposant un échange ou une question pour comprendre le besoin, tout en suggérant une suite concrète si pertinent.",
+  };
+
+  return priorities[style];
+}
+
+function resolveLinkInstruction(config: ReplyConfig, lead: ReplyLead): string {
   const frequency = config.response_link_frequency ?? "if_relevant";
   const link = config.response_link?.trim();
   const base = LINK_FREQUENCY_INSTRUCTIONS[frequency];
@@ -96,7 +164,86 @@ function resolveLinkInstruction(config: ReplyConfig): string {
     return base;
   }
 
+  if (frequency === "if_relevant" && isLinkContextRelevant(lead)) {
+    return `${base}\nContexte détecté : comparaison d'outils, recommandation ou recherche d'alternative — le lien est pertinent pour ce post.\nLien à utiliser : ${link}`;
+  }
+
   return `${base}\nLien à utiliser si applicable : ${link}`;
+}
+
+function resolveLinkPriority(config: ReplyConfig, lead: ReplyLead): string | null {
+  const frequency = config.response_link_frequency ?? "if_relevant";
+  const link = config.response_link?.trim();
+
+  if (frequency === "never") {
+    return "N'inclus AUCUN lien URL dans ta réponse.";
+  }
+
+  if (!link) return null;
+
+  if (frequency === "always") {
+    return `Tu DOIS inclure exactement ce lien une fois, de façon naturelle : ${link}`;
+  }
+
+  if (isLinkContextRelevant(lead)) {
+    return `Le contexte de ce post rend le lien pertinent (comparaison d'outils, recommandation ou recherche d'alternative). Tu DOIS inclure exactement ce lien une fois : ${link}`;
+  }
+
+  return "Le contexte de ce post ne rend pas le lien pertinent. N'inclus PAS de lien URL dans ta réponse.";
+}
+
+function resolveToneInstruction(config: ReplyConfig): string {
+  const style = config.response_closing_style;
+  const goal = config.response_goal;
+
+  if (
+    style === "direct" ||
+    goal === "waitlist" ||
+    goal === "visit_site" ||
+    goal === "book_call"
+  ) {
+    return "Rédige une réponse courte, naturelle et en français, prête à poster en commentaire Reddit. Ne sois pas agressif, mais sois clair et direct sur l'action demandée.";
+  }
+
+  return "Rédige une réponse courte, naturelle et en français, prête à poster en commentaire Reddit. Ton amical et utile, pas vendeur agressif.";
+}
+
+function buildMandatoryPrioritiesBlock(config: ReplyConfig, lead: ReplyLead): string {
+  const sections: string[] = ["=== PRIORITÉS OBLIGATOIRES (respecte impérativement) ===", ""];
+
+  let index = 1;
+
+  const goalPriority = resolveGoalPriority(config);
+  if (goalPriority) {
+    sections.push(`${index}. OBJECTIF : ${goalPriority}`);
+    sections.push("");
+    index++;
+  }
+
+  const closingPriority = resolveClosingPriority(config);
+  if (closingPriority) {
+    sections.push(`${index}. CLOSING : ${closingPriority}`);
+    sections.push("");
+    index++;
+  }
+
+  const linkPriority = resolveLinkPriority(config, lead);
+  if (linkPriority) {
+    sections.push(`${index}. LIEN : ${linkPriority}`);
+    sections.push("");
+    index++;
+  }
+
+  const tonePriority =
+    config.response_closing_style === "direct" ||
+    config.response_goal === "waitlist" ||
+    config.response_goal === "visit_site"
+      ? "Ne sois pas agressif, mais sois clair et direct sur l'action demandée ci-dessus (objectif, closing, lien)."
+      : "Reste naturel, utile et non agressif — sans compromettre les priorités ci-dessus.";
+
+  sections.push(`${index}. TON : ${tonePriority}`);
+
+  return sections.join("\n");
 }
 
 export function buildReplyPrompt(lead: ReplyLead, config: ReplyConfig): string {
@@ -115,16 +262,21 @@ export function buildReplyPrompt(lead: ReplyLead, config: ReplyConfig): string {
     ? `\nÉvite absolument dans ton ton et tes formulations : ${config.tone_avoid.trim()}`
     : "";
 
+  const complementaryDescription =
+    config.product_description && config.offer_description?.trim()
+      ? `Description complémentaire : ${config.product_description}`
+      : "";
+
   return `Tu es un expert en prospection Reddit B2B.
 
 Contexte business (offre en une phrase) : ${offerContext}
 Cible idéale : ${config.target}
 Nom du produit / marque : ${productName}
-${config.product_description && config.offer_description?.trim() ? `Description complémentaire : ${config.product_description}` : ""}
+${complementaryDescription}
 
 ${resolveGoalInstruction(config)}
 ${resolveClosingInstruction(config)}
-${resolveLinkInstruction(config)}${toneAvoidBlock}
+${resolveLinkInstruction(config, lead)}${toneAvoidBlock}
 
 Post Reddit à commenter :
 - Titre : ${title}
@@ -132,8 +284,9 @@ Post Reddit à commenter :
 - Subreddit : ${subreddit}
 - Auteur : u/${author}
 
-Rédige une réponse courte, naturelle et en français, prête à poster en commentaire Reddit.
-Ton amical et utile, pas vendeur agressif.
+${resolveToneInstruction(config)}
+
+${buildMandatoryPrioritiesBlock(config, lead)}
 
 RÈGLES DE FORMAT :
 - N'utilise JAMAIS de tirets ("-") dans ta réponse, ni en début de ligne ni en milieu de phrase comme séparateur.
