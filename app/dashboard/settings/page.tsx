@@ -12,14 +12,36 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-type TabId = "scanner" | "billing" | "notifications" | "account";
+type TabId = "scanner" | "billing" | "notifications" | "responses" | "account";
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "scanner", label: "Scanner", icon: "🎯" },
   { id: "billing", label: "Abonnement", icon: "💳" },
   { id: "notifications", label: "Notifications", icon: "🔔" },
+  { id: "responses", label: "Réponses IA", icon: "✍️" },
   { id: "account", label: "Compte", icon: "👤" },
 ];
+
+const RESPONSE_GOAL_OPTIONS = [
+  { value: "visit_site", label: "Visiter mon site" },
+  { value: "contact_dm", label: "Me contacter en DM" },
+  { value: "book_call", label: "Réserver un appel" },
+  { value: "waitlist", label: "Rejoindre ma liste d'attente / newsletter" },
+  { value: "other", label: "Autre" },
+] as const;
+
+const RESPONSE_CLOSING_OPTIONS = [
+  { value: "soft", label: "Soft" },
+  { value: "direct", label: "Direct" },
+  { value: "consultative", label: "Consultatif" },
+  { value: "other", label: "Autre" },
+] as const;
+
+const RESPONSE_LINK_FREQUENCY_OPTIONS = [
+  { value: "always", label: "Toujours" },
+  { value: "if_relevant", label: "Seulement si pertinent" },
+  { value: "never", label: "Jamais, juste construire la relation" },
+] as const;
 
 const DEFAULT_KEYWORDS = [
   "trouver des clients B2B",
@@ -216,6 +238,16 @@ function SettingsContent() {
   const [bulkImportText, setBulkImportText] = useState("");
   const [initialSnapshot, setInitialSnapshot] = useState("");
   const [initialNotificationsSnapshot, setInitialNotificationsSnapshot] = useState("");
+  const [initialResponsesSnapshot, setInitialResponsesSnapshot] = useState("");
+
+  const [responseGoal, setResponseGoal] = useState("");
+  const [responseGoalOther, setResponseGoalOther] = useState("");
+  const [responseLink, setResponseLink] = useState("");
+  const [responseClosingStyle, setResponseClosingStyle] = useState("");
+  const [responseClosingOther, setResponseClosingOther] = useState("");
+  const [responseLinkFrequency, setResponseLinkFrequency] = useState("if_relevant");
+  const [offerDescription, setOfferDescription] = useState("");
+  const [toneAvoid, setToneAvoid] = useState("");
 
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [slackAlerts, setSlackAlerts] = useState(false);
@@ -291,6 +323,24 @@ function SettingsContent() {
         if (typeof data.weekly_digest === "boolean") setWeeklyDigest(data.weekly_digest);
         if (typeof data.auto_scan_hour === "number") setAutoScanHour(data.auto_scan_hour);
 
+        const rg = data.response_goal ?? "";
+        const rgo = data.response_goal_other ?? "";
+        const rl = data.response_link ?? "";
+        const rcs = data.response_closing_style ?? "";
+        const rco = data.response_closing_other ?? "";
+        const rlf = data.response_link_frequency ?? "if_relevant";
+        const od = data.offer_description ?? "";
+        const ta = data.tone_avoid ?? "";
+
+        setResponseGoal(rg);
+        setResponseGoalOther(rgo);
+        setResponseLink(rl);
+        setResponseClosingStyle(rcs);
+        setResponseClosingOther(rco);
+        setResponseLinkFrequency(rlf);
+        setOfferDescription(od);
+        setToneAvoid(ta);
+
         setInitialSnapshot(
           JSON.stringify({
             productDesc: pd,
@@ -308,6 +358,18 @@ function SettingsContent() {
             alertEmail: data.alert_email ?? user.email,
             slackWebhook: data.slack_webhook_url ?? "",
             autoScanHour: data.auto_scan_hour ?? 8,
+          })
+        );
+        setInitialResponsesSnapshot(
+          JSON.stringify({
+            responseGoal: rg,
+            responseGoalOther: rgo,
+            responseLink: rl,
+            responseClosingStyle: rcs,
+            responseClosingOther: rco,
+            responseLinkFrequency: rlf,
+            offerDescription: od,
+            toneAvoid: ta,
           })
         );
       } else {
@@ -329,6 +391,18 @@ function SettingsContent() {
             alertEmail: user.email,
             slackWebhook: "",
             autoScanHour: 8,
+          })
+        );
+        setInitialResponsesSnapshot(
+          JSON.stringify({
+            responseGoal: "",
+            responseGoalOther: "",
+            responseLink: "",
+            responseClosingStyle: "",
+            responseClosingOther: "",
+            responseLinkFrequency: "if_relevant",
+            offerDescription: "",
+            toneAvoid: "",
           })
         );
       }
@@ -409,6 +483,31 @@ function SettingsContent() {
     alertEmail,
     slackWebhook,
     autoScanHour,
+  ]);
+
+  const isResponsesDirty = useMemo(() => {
+    if (!initialResponsesSnapshot) return false;
+    const current = JSON.stringify({
+      responseGoal,
+      responseGoalOther,
+      responseLink,
+      responseClosingStyle,
+      responseClosingOther,
+      responseLinkFrequency,
+      offerDescription,
+      toneAvoid,
+    });
+    return current !== initialResponsesSnapshot;
+  }, [
+    initialResponsesSnapshot,
+    responseGoal,
+    responseGoalOther,
+    responseLink,
+    responseClosingStyle,
+    responseClosingOther,
+    responseLinkFrequency,
+    offerDescription,
+    toneAvoid,
   ]);
 
   const trialDaysLeft = useMemo(() => {
@@ -563,6 +662,48 @@ function SettingsContent() {
           alertEmail,
           slackWebhook,
           autoScanHour,
+        })
+      );
+    }
+  }
+
+  async function handleSaveResponses() {
+    setSaving(true);
+
+    const uid = (await supabase.auth.getUser()).data.user?.id;
+
+    const { error } = await supabase.from("user_configs").upsert(
+      {
+        user_id: uid,
+        response_goal: responseGoal || null,
+        response_goal_other: responseGoal === "other" ? responseGoalOther.trim() || null : null,
+        response_link: responseLink.trim() || null,
+        response_closing_style: responseClosingStyle || null,
+        response_closing_other:
+          responseClosingStyle === "other" ? responseClosingOther.trim() || null : null,
+        response_link_frequency: responseLinkFrequency || "if_relevant",
+        offer_description: offerDescription.trim() || null,
+        tone_avoid: toneAvoid.trim() || null,
+      },
+      { onConflict: "user_id" }
+    );
+
+    setSaving(false);
+
+    if (error) {
+      setToast("Erreur : " + error.message);
+    } else {
+      setToast("Paramètres sauvegardés ✓");
+      setInitialResponsesSnapshot(
+        JSON.stringify({
+          responseGoal,
+          responseGoalOther,
+          responseLink,
+          responseClosingStyle,
+          responseClosingOther,
+          responseLinkFrequency,
+          offerDescription,
+          toneAvoid,
         })
       );
     }
@@ -1523,6 +1664,176 @@ function SettingsContent() {
             style={{
               ...primaryButton(saveHover, saving || !isNotificationsDirty),
               marginTop: "20px",
+              width: btnWidth,
+              minWidth: btnMinWidth,
+              padding: "12px 28px",
+              fontSize: "14px",
+              fontWeight: 600,
+              fontFamily,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            {saving && (
+              <span
+                style={{
+                  width: "14px",
+                  height: "14px",
+                  border: "2px solid rgba(255,255,255,0.3)",
+                  borderTopColor: "#fff",
+                  borderRadius: "50%",
+                  animation: "spin 0.8s linear infinite",
+                }}
+              />
+            )}
+            {saving ? "Sauvegarde…" : "Sauvegarder"}
+          </button>
+        </div>
+      )}
+
+      {/* ── TAB: Réponses IA ── */}
+      {activeTab === "responses" && (
+        <div
+          style={{
+            ...cardBase,
+            padding: cardPadding,
+            display: "flex",
+            flexDirection: "column",
+            gap: isMobile ? "20px" : "24px",
+          }}
+        >
+          <div>
+            <p style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700, color: colors.text }}>
+              Réponses IA
+            </p>
+            <p style={{ margin: 0, fontSize: "13px", color: colors.textMuted, lineHeight: 1.5 }}>
+              Personnalise le ton et l&apos;objectif des réponses générées pour tes leads Reddit.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="response-goal" style={labelStyle}>
+              Objectif de la réponse
+            </label>
+            <select
+              id="response-goal"
+              value={responseGoal}
+              onChange={(e) => setResponseGoal(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Choisir un objectif…</option>
+              {RESPONSE_GOAL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {responseGoal === "other" && (
+              <input
+                type="text"
+                value={responseGoalOther}
+                onChange={(e) => setResponseGoalOther(e.target.value)}
+                placeholder="Précise ton objectif…"
+                style={{ ...inputStyle, marginTop: "10px" }}
+              />
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="response-link" style={labelStyle}>
+              Lien à inclure
+            </label>
+            <input
+              id="response-link"
+              type="url"
+              value={responseLink}
+              onChange={(e) => setResponseLink(e.target.value)}
+              placeholder="https://ton-site.com"
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="response-closing" style={labelStyle}>
+              Style de closing
+            </label>
+            <select
+              id="response-closing"
+              value={responseClosingStyle}
+              onChange={(e) => setResponseClosingStyle(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">Choisir un style…</option>
+              {RESPONSE_CLOSING_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {responseClosingStyle === "other" && (
+              <input
+                type="text"
+                value={responseClosingOther}
+                onChange={(e) => setResponseClosingOther(e.target.value)}
+                placeholder="Décris le style souhaité…"
+                style={{ ...inputStyle, marginTop: "10px" }}
+              />
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="response-link-frequency" style={labelStyle}>
+              Fréquence du lien
+            </label>
+            <select
+              id="response-link-frequency"
+              value={responseLinkFrequency}
+              onChange={(e) => setResponseLinkFrequency(e.target.value)}
+              style={inputStyle}
+            >
+              {RESPONSE_LINK_FREQUENCY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="offer-description" style={labelStyle}>
+              Description de l&apos;offre en une phrase
+            </label>
+            <textarea
+              id="offer-description"
+              value={offerDescription}
+              onChange={(e) => setOfferDescription(e.target.value)}
+              placeholder="Décris ton offre comme tu la dirais à un ami"
+              style={textareaStyle}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="tone-avoid" style={labelStyle}>
+              Choses à éviter dans le ton <span style={{ fontWeight: 400, color: colors.textMuted }}>(optionnel)</span>
+            </label>
+            <textarea
+              id="tone-avoid"
+              value={toneAvoid}
+              onChange={(e) => setToneAvoid(e.target.value)}
+              placeholder="Ex : ton corporate, emojis, jargon technique, promesses exagérées…"
+              style={{ ...textareaStyle, minHeight: "72px" }}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveResponses}
+            disabled={saving || !isResponsesDirty}
+            onMouseEnter={() => setSaveHover(true)}
+            onMouseLeave={() => setSaveHover(false)}
+            style={{
+              ...primaryButton(saveHover, saving || !isResponsesDirty),
               width: btnWidth,
               minWidth: btnMinWidth,
               padding: "12px 28px",

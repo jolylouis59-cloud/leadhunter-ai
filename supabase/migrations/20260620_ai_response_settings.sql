@@ -1,0 +1,9 @@
+-- Réponses IA : questionnaire personnalisation (Paramètres > Réponses IA)
+alter table public.user_configs add column if not exists response_goal text;
+alter table public.user_configs add column if not exists response_goal_other text;
+alter table public.user_configs add column if not exists response_link text;
+alter table public.user_configs add column if not exists response_closing_style text;
+alter table public.user_configs add column if not exists response_closing_other text;
+alter table public.user_configs add column if not exists response_link_frequency text;
+alter table public.user_configs add column if not exists offer_description text;
+alter table public.user_configs add column if not exists tone_avoid text;

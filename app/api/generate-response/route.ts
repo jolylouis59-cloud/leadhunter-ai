@@ -1,50 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
-
-type UserConfig = {
-  product_description: string;
-  target: string;
-  product_name: string | null;
-};
-
-type LeadRow = {
-  post_title?: string | null;
-  title?: string | null;
-  post_body?: string | null;
-  subreddit?: string | null;
-  author?: string | null;
-  username?: string | null;
-};
-
-function buildReplyPrompt(lead: LeadRow, config: UserConfig): string {
-  const title = lead.post_title ?? lead.title ?? "";
-  const body = lead.post_body ?? "";
-  const subreddit = lead.subreddit ? `r/${lead.subreddit}` : "ce subreddit";
-  const author = lead.author ?? lead.username ?? "l'auteur";
-  const productName = config.product_name?.trim() || "LeadHunter AI";
-
-  return `Tu es un expert en prospection Reddit B2B.
-
-Produit : ${config.product_description}
-Cible : ${config.target}
-Nom du produit : ${productName}
-
-Post Reddit à commenter :
-- Titre : ${title}
-- Contenu : ${body || "(pas de contenu)"}
-- Subreddit : ${subreddit}
-- Auteur : u/${author.replace(/^u\//i, "")}
-
-Rédige une réponse courte, naturelle et en français, prête à poster en commentaire Reddit.
-Ton amical et utile, pas vendeur agressif. Mentionne le produit seulement si c'est pertinent.
-
-RÈGLES DE FORMAT :
-- N'utilise JAMAIS de tirets ("-") dans ta réponse, ni en début de ligne ni en milieu de phrase comme séparateur.
-- Reformule avec des virgules, des points, ou des phrases complètes à la place.
-- Pas de markdown, pas de listes à puces, pas de guillemets autour de la réponse.
-
-Réponds UNIQUEMENT avec le texte de la réponse, sans préambule.`;
-}
+import { buildReplyPrompt, type ReplyConfig } from "@/lib/reply-prompt";
 
 function buildFallbackResponse(
   title: string,
@@ -52,7 +8,7 @@ function buildFallbackResponse(
   username: string | null
 ): string {
   const user = username ? `u/${username.replace(/^u\//i, "")}` : "là";
-  const sub = subreddit ? `r/${subreddit}` : "ce subreddit";
+  const sub = subreddit ? `r/${subreddit.replace(/^r\//i, "")}` : "ce subreddit";
 
   return `Salut ${user} !
 
@@ -64,8 +20,8 @@ Si tu veux tester, on offre 7 jours gratuits sans CB. Je peux t'envoyer le lien 
 }
 
 async function generateReplyWithClaude(
-  lead: LeadRow,
-  config: UserConfig
+  lead: Parameters<typeof buildReplyPrompt>[0],
+  config: ReplyConfig
 ): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -130,15 +86,25 @@ export async function POST(request: Request) {
 
   const { data: configRow } = await supabase
     .from("user_configs")
-    .select("product_description, target, product_name")
+    .select(
+      "product_description, target, product_name, response_goal, response_goal_other, response_link, response_closing_style, response_closing_other, response_link_frequency, offer_description, tone_avoid"
+    )
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const config: UserConfig = {
+  const config: ReplyConfig = {
     product_description:
       configRow?.product_description ?? "outil de prospection B2B automatisé",
     target: configRow?.target ?? "founders, solopreneurs, agences marketing",
     product_name: configRow?.product_name ?? null,
+    response_goal: configRow?.response_goal ?? null,
+    response_goal_other: configRow?.response_goal_other ?? null,
+    response_link: configRow?.response_link ?? null,
+    response_closing_style: configRow?.response_closing_style ?? null,
+    response_closing_other: configRow?.response_closing_other ?? null,
+    response_link_frequency: configRow?.response_link_frequency ?? "if_relevant",
+    offer_description: configRow?.offer_description ?? null,
+    tone_avoid: configRow?.tone_avoid ?? null,
   };
 
   const title = lead.post_title ?? lead.title ?? "";
