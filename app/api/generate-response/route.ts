@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasActiveAccess } from "@/lib/access";
 import { createClient } from "@/lib/supabase-server";
 import { buildReplyPrompt, type ReplyConfig } from "@/lib/reply-prompt";
 
@@ -88,10 +89,22 @@ export async function POST(request: Request) {
   const { data: configRow } = await supabase
     .from("user_configs")
     .select(
-      "product_description, target, product_name, response_goal, response_goal_other, response_link, response_closing_style, response_closing_other, response_link_frequency, offer_description, tone_avoid"
+      "plan, trial_ends_at, product_description, target, product_name, response_goal, response_goal_other, response_link, response_closing_style, response_closing_other, response_link_frequency, offer_description, tone_avoid"
     )
     .eq("user_id", user.id)
     .maybeSingle();
+
+  if (
+    !hasActiveAccess({
+      plan: configRow?.plan ?? "free",
+      trial_ends_at: configRow?.trial_ends_at ?? null,
+    })
+  ) {
+    return NextResponse.json(
+      { error: "Abonnement ou essai actif requis pour générer une réponse IA" },
+      { status: 403 }
+    );
+  }
 
   const config: ReplyConfig = {
     product_description:

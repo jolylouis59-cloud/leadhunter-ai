@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import LeadCard from "@/components/dashboard/LeadCard";
 import LeadSkeleton from "@/components/dashboard/LeadSkeleton";
 import ResponseModal from "@/components/dashboard/ResponseModal";
 import Toast from "@/components/dashboard/Toast";
+import { hasActiveAccess, type UserAccess } from "@/lib/access";
 import { supabase } from "@/lib/supabase-client";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
 import { dedupeLeads, getLeadCreatedTimestamp, getLeadTimestamp } from "@/lib/leads-utils";
@@ -74,6 +76,13 @@ export default function DashboardPage() {
   const [modalLeadTitle, setModalLeadTitle] = useState("");
   const [scanHover, setScanHover] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [userAccess, setUserAccess] = useState<UserAccess>({
+    plan: "free",
+    trial_ends_at: null,
+  });
+  const [accessLoading, setAccessLoading] = useState(true);
+
+  const activeAccess = hasActiveAccess(userAccess);
 
   const fetchLeads = useCallback(async (options?: { silent?: boolean }): Promise<Lead[]> => {
     if (!options?.silent) {
@@ -123,6 +132,36 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
+
+  useEffect(() => {
+    async function loadAccess() {
+      setAccessLoading(true);
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          setUserAccess({ plan: "free", trial_ends_at: null });
+          return;
+        }
+
+        const { data } = await supabase
+          .from("user_configs")
+          .select("plan, trial_ends_at")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        setUserAccess({
+          plan: data?.plan ?? "free",
+          trial_ends_at: data?.trial_ends_at ?? null,
+        });
+      } finally {
+        setAccessLoading(false);
+      }
+    }
+
+    loadAccess();
+  }, []);
 
   const stats = useMemo(() => {
     const now = Date.now();
@@ -257,6 +296,14 @@ export default function DashboardPage() {
   }
 
   async function handleGenerate(leadId: string) {
+    if (!activeAccess) {
+      setToast({
+        message: "Abonnement ou essai actif requis pour générer une réponse IA",
+        type: "error",
+      });
+      return;
+    }
+
     setGeneratingId(leadId);
     try {
       const res = await fetch("/api/generate-response", {
@@ -270,6 +317,11 @@ export default function DashboardPage() {
         setModalLeadTitle(lead?.post_title ?? lead?.title ?? "Lead");
         setModalResponse(data.response);
         setModalLeadId(leadId);
+      } else if (res.status === 403) {
+        setToast({
+          message: data.error || "Abonnement ou essai actif requis",
+          type: "error",
+        });
       }
     } finally {
       setGeneratingId(null);
@@ -297,6 +349,45 @@ export default function DashboardPage() {
     await supabase.from("leads").update({ status: "responded" }).eq("id", leadId).eq("user_id", user.id);
     setLeads((prev) =>
       prev.map((l) => (l.id === leadId ? { ...l, status: "responded" as const } : l))
+    );
+  }
+
+  function renderPaywallState() {
+    return (
+      <div
+        style={{
+          ...cardBase,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "64px 24px",
+          textAlign: "center",
+        }}
+      >
+        <span style={{ fontSize: "48px", lineHeight: 1 }}>🔒</span>
+        <p style={{ marginTop: "20px", marginBottom: 0, fontSize: "18px", fontWeight: 700, color: colors.text }}>
+          Ton essai est terminé
+        </p>
+        <p style={{ marginTop: "8px", marginBottom: 0, fontSize: "14px", color: colors.textMuted, maxWidth: "400px" }}>
+          Choisis un plan pour voir tes leads et générer des réponses IA.
+        </p>
+        <Link
+          href="/dashboard/settings?tab=billing"
+          style={{
+            ...primaryButton(false, false),
+            marginTop: "24px",
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "12px 24px",
+            fontSize: "14px",
+            fontWeight: 600,
+            fontFamily,
+            textDecoration: "none",
+          }}
+        >
+          Voir les plans
+        </Link>
+      </div>
     );
   }
 
@@ -502,7 +593,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {topLeadsToday.length > 0 && (
+      {activeAccess && topLeadsToday.length > 0 && (
         <section
           style={{
             background: colors.accent,
@@ -553,7 +644,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => handleGenerate(lead.id)}
-                    disabled={generatingId === lead.id}
+                    disabled={generatingId === lead.id || !activeAccess}
                     style={{
                       background: "#ffffff",
                       color: colors.accent,
@@ -689,12 +780,14 @@ export default function DashboardPage() {
       </div>
 
       <div style={{ marginTop: "8px" }}>
-        {loading ? (
+        {loading || accessLoading ? (
           <>
             {[1, 2, 3].map((i) => (
               <LeadSkeleton key={i} />
             ))}
           </>
+        ) : !activeAccess && leads.length > 0 ? (
+          renderPaywallState()
         ) : fetchError ? (
           <div style={{ ...cardBase, padding: "48px 24px", textAlign: "center" }}>
             <p style={{ margin: "0 0 8px", fontSize: "16px", fontWeight: 600, color: "#DC2626" }}>
@@ -749,6 +842,7 @@ export default function DashboardPage() {
                 onGenerate={handleGenerate}
                 onIgnore={handleIgnore}
                 generating={generatingId === lead.id}
+                canGenerate={hasActiveAccess(userAccess)}
               />
             ))}
 

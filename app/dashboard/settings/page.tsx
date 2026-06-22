@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { useRouter, useSearchParams } from "next/navigation";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
+import { hasActiveAccess, isPaidPlan, isTrialActive } from "@/lib/access";
 import { getKeywordLimit, getSubredditLimit } from "@/lib/plan-limits";
 
 const supabase = createBrowserClient(
@@ -511,10 +512,15 @@ function SettingsContent() {
   ]);
 
   const trialDaysLeft = useMemo(() => {
-    if (!trialEndsAt) return null;
-    const diff = new Date(trialEndsAt).getTime() - Date.now();
+    if (!isTrialActive(trialEndsAt)) return null;
+    const diff = new Date(trialEndsAt!).getTime() - Date.now();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   }, [trialEndsAt]);
+
+  const activeAccess = useMemo(
+    () => hasActiveAccess({ plan: currentPlan, trial_ends_at: trialEndsAt }),
+    [currentPlan, trialEndsAt]
+  );
 
   function addKeyword() {
     const value = keywordInput.trim();
@@ -1367,11 +1373,13 @@ function SettingsContent() {
                 </span>
               )}
             </p>
-            {currentPlan === "free" && (
+            {!isPaidPlan(currentPlan) && (
               <p style={{ margin: "8px 0 0", fontSize: "13px", color: colors.textMuted }}>
-                {trialEndsAt
+                {activeAccess && trialEndsAt
                   ? `Votre essai gratuit se termine le ${new Date(trialEndsAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}${trialDaysLeft !== null ? ` (${trialDaysLeft} jour${trialDaysLeft > 1 ? "s" : ""} restant${trialDaysLeft > 1 ? "s" : ""})` : ""}`
-                  : "7 jours d'essai inclus"}
+                  : activeAccess
+                    ? "7 jours d'essai inclus"
+                    : "Votre essai est terminé. Choisissez un plan pour continuer."}
               </p>
             )}
           </div>

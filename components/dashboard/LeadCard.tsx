@@ -16,6 +16,7 @@ type LeadCardProps = {
   onGenerate: (leadId: string) => void;
   onIgnore: (leadId: string) => void;
   generating: boolean;
+  canGenerate?: boolean;
 };
 
 export default function LeadCard({
@@ -23,6 +24,7 @@ export default function LeadCard({
   onGenerate,
   onIgnore,
   generating,
+  canGenerate = true,
 }: LeadCardProps) {
   const [hovered, setHovered] = useState(false);
   const [genHover, setGenHover] = useState(false);
@@ -190,11 +192,11 @@ export default function LeadCard({
         <button
           type="button"
           onClick={() => onGenerate(lead.id)}
-          disabled={generating}
+          disabled={generating || !canGenerate}
           onMouseEnter={() => setGenHover(true)}
           onMouseLeave={() => setGenHover(false)}
           style={{
-            ...primaryButton(genHover, generating),
+            ...primaryButton(genHover, generating || !canGenerate),
             display: "inline-flex",
             alignItems: "center",
             gap: "6px",
