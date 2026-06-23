@@ -9,6 +9,11 @@ import {
   buildIntentScorePrompt,
   MIN_INTENT_SCORE_TO_INSERT,
 } from "@/lib/intent-score-prompt";
+import {
+  isFrancophoneTargeted,
+  pickScanCombinations,
+  type ScanCombination,
+} from "@/lib/scan-locale";
 
 const REDDIT_REQUEST_DELAY_MS = 500;
 const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
@@ -103,76 +108,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type ScanCombination = { subreddit: string; keyword: string };
-
-const KNOWN_FRANCOPHONE_SUBREDDITS = new Set([
-  "frenchstartup",
-  "entrepreneur_fr",
-  "startupsfr",
-  "france",
-  "quebec",
-  "frenchtech",
-  "sideproject_fr",
-  "freelance_fr",
-  "entrepreneurs",
-]);
-
-function isFrancophoneSubreddit(subreddit: string): boolean {
-  const name = subreddit.replace(/^r\//i, "").trim().toLowerCase();
-  if (!name) return false;
-  if (KNOWN_FRANCOPHONE_SUBREDDITS.has(name)) return true;
-  if (/french/i.test(name)) return true;
-  if (/francophone|francais|français/i.test(name)) return true;
-  if (/quebec|belgique|suisse|montreal|paris/i.test(name)) return true;
-  if (/(^|_)fr($|_)/i.test(name) || /fr$/i.test(name)) return true;
-  return false;
-}
-
-function isFrenchKeyword(keyword: string): boolean {
-  const k = keyword.trim();
-  if (!k) return false;
-  if (/[àâäéèêëïîôùûüÿçœæ]/i.test(k)) return true;
-  if (/\(fr\)|\[fr\]/i.test(k)) return true;
-  if (/\bde\s+(leads?|prospects?|clients?)\b/i.test(k)) return true;
-  if (/\b(recherche|prospection|logiciel|automatisation|commercialisation)\b/i.test(k)) {
-    return true;
-  }
-  if (/\b(comment|pourquoi|quel|quelle|cherche|chercher|besoin)\b/i.test(k)) return true;
-  return false;
-}
-
-function shuffleInPlace<T>(arr: T[]): void {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-}
-
-function isFrancophoneTargeted(c: ScanCombination): boolean {
-  return isFrancophoneSubreddit(c.subreddit) || isFrenchKeyword(c.keyword);
-}
-
-function pickScanCombinations(
-  subreddits: string[],
-  keywords: string[],
-  max: number
-): ScanCombination[] {
-  const all: ScanCombination[] = keywords.flatMap((keyword) =>
-    subreddits.map((subreddit) => ({ subreddit, keyword }))
-  );
-
-  if (all.length <= max) return all;
-
-  const francophone = all.filter(isFrancophoneTargeted);
-  const others = all.filter((c) => !isFrancophoneTargeted(c));
-  shuffleInPlace(francophone);
-  shuffleInPlace(others);
-
-  const picked = [...francophone, ...others].slice(0, max);
-  shuffleInPlace(picked);
-  return picked;
-}
-
 async function searchReddit(subreddit: string, keyword: string): Promise<{
   fetchDetail: RedditFetchDetail;
   posts: RedditPost[];
@@ -261,6 +196,8 @@ async function scoreWithClaude(
             target: config.target,
             title: post.title,
             selftext: post.selftext || "",
+            subreddit: post.subreddit,
+            keywords: config.keywords,
           }),
         },
       ],

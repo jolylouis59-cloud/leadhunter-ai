@@ -4,6 +4,7 @@ import {
   buildIntentScorePrompt,
   MIN_INTENT_SCORE_TO_INSERT,
 } from "@/lib/intent-score-prompt";
+import { pickScanCombinations } from "@/lib/scan-locale";
 
 const DEFAULT_CONFIG = {
   product_description: "outil de prospection B2B automatisé",
@@ -23,28 +24,6 @@ const CLAUDE_DELAY_MS = 500;
 const REDDIT_REQUEST_DELAY_MS = 500;
 const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
 const MAX_COMBINATIONS_PER_SCAN = 20;
-
-type ScanCombination = { subreddit: string; keyword: string };
-
-function shuffleInPlace<T>(arr: T[]): void {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-}
-
-function pickScanCombinations(
-  subreddits: string[],
-  keywords: string[],
-  max: number
-): ScanCombination[] {
-  const all: ScanCombination[] = keywords.flatMap((keyword) =>
-    subreddits.map((subreddit) => ({ subreddit, keyword }))
-  );
-  if (all.length <= max) return all;
-  shuffleInPlace(all);
-  return all.slice(0, max);
-}
 
 type UserConfig = {
   product_description: string;
@@ -222,6 +201,7 @@ async function scoreWithClaude(
               title: post.title,
               selftext: post.selftext?.slice(0, 500) || "",
               subreddit,
+              keywords: config.keywords,
             }),
           },
         ],

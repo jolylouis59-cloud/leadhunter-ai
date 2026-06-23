@@ -1,4 +1,34 @@
+import { analyzeKeywordLanguages } from "@/lib/scan-locale";
+
 export const MIN_INTENT_SCORE_TO_INSERT = 30;
+
+function buildLanguageScoreRules(keywords: string[]): string {
+  const profile = analyzeKeywordLanguages(keywords);
+  const sample = keywords
+    .filter((k) => k.trim())
+    .slice(0, 6)
+    .map((k) => `« ${k} »`)
+    .join(", ");
+
+  if (profile.isMultilingual) {
+    return `LANGUE CIBLE : multilingue (mots-clés FR et EN détectés parmi : ${sample || "—"}).
+Ne pénalise pas un post uniquement pour sa langue si l'intention d'achat prospection B2B est claire.`;
+  }
+
+  if (profile.targetLanguage === "fr") {
+    return `LANGUE CIBLE : français (déduit des mots-clés configurés : ${sample || "—"}).
+Règle PRIORITAIRE : si le titre ET le contenu du post sont principalement en anglais ou dans une autre langue (pas en français), le score MAXIMUM est 15, même si l'intention d'achat semble forte.
+Score ≤ 15 si le post n'est pas rédigé en français.`;
+  }
+
+  if (profile.targetLanguage === "en") {
+    return `LANGUE CIBLE : anglais (déduit des mots-clés configurés : ${sample || "—"}).
+Règle PRIORITAIRE : si le titre ET le contenu du post sont principalement en français ou dans une autre langue (pas en anglais), le score MAXIMUM est 15, même si l'intention d'achat semble forte.
+Score ≤ 15 si le post n'est pas rédigé en anglais.`;
+  }
+
+  return "";
+}
 
 export function buildIntentScorePrompt(params: {
   productDescription: string;
@@ -6,10 +36,14 @@ export function buildIntentScorePrompt(params: {
   title: string;
   selftext: string;
   subreddit?: string;
+  keywords?: string[];
 }): string {
   const postHeader = params.subreddit
     ? `Post Reddit de r/${params.subreddit} :`
     : "Post Reddit :";
+
+  const languageRules = buildLanguageScoreRules(params.keywords ?? []);
+  const languageBlock = languageRules ? `\n${languageRules}\n` : "";
 
   return `Tu es expert en détection d'intention d'achat B2B pour des outils de PROSPECTION et d'ACQUISITION DE CLIENTS.
 
@@ -19,7 +53,7 @@ Cible idéale : ${params.target}
 ${postHeader}
 Titre : ${params.title}
 Contenu : ${params.selftext}
-
+${languageBlock}
 Donne un Intent Score de 0 à 100 (100 = cherche activement un outil de prospection/acquisition B2B).
 
 Règles STRICTES :

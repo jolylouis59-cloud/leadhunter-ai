@@ -33,6 +33,11 @@ if (!apiKey) {
 const config = {
   product_description: "outil de prospection B2B automatisé sur Reddit",
   target: "founders, solopreneurs, agences marketing",
+  keywords: [
+    "trouver des clients B2B",
+    "prospection sans cold email",
+    "comment trouver des clients",
+  ],
 };
 
 async function fetchRssPosts(subreddit, keyword, limit = 5) {
@@ -85,6 +90,7 @@ async function scoreWithClaude(post) {
             title: post.title,
             selftext: post.selftext || "",
             subreddit: post.subreddit,
+            keywords: config.keywords,
           }),
         },
       ],
