@@ -133,7 +133,7 @@ export default function Navbar() {
               Se connecter
             </a>
             <a href="/login" style={{ ...primaryBtnStyle, padding: "12px 20px", whiteSpace: "nowrap" }}>
-              Commencer gratuitement
+              Essai gratuit — 15 leads
             </a>
           </div>
         )}
@@ -160,7 +160,7 @@ export default function Navbar() {
                 flexShrink: 0,
               }}
             >
-              Commencer gratuitement
+              Essai gratuit — 15 leads
             </a>
             <button
               type="button"

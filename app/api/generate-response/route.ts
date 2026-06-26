@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { hasActiveAccess } from "@/lib/access";
+import { canGenerateAiResponse } from "@/lib/access";
+import {
+  countsTowardFreeTrialLimits,
+  FREE_TRIAL_AI_RESPONSES_LIMIT,
+  incrementFreeTrialAiResponsesUsed,
+} from "@/lib/free-trial";
+import { createAdminClient } from "@/lib/supabase-admin";
 import { createClient } from "@/lib/supabase-server";
 import { buildReplyPrompt, type ReplyConfig } from "@/lib/reply-prompt";
 
@@ -89,19 +95,26 @@ export async function POST(request: Request) {
   const { data: configRow } = await supabase
     .from("user_configs")
     .select(
-      "plan, trial_ends_at, product_description, target, product_name, response_goal, response_goal_other, response_link, response_closing_style, response_closing_other, response_link_frequency, offer_description, tone_avoid"
+      "plan, trial_ends_at, is_free_trial, free_trial_ai_responses_used, product_description, target, product_name, response_goal, response_goal_other, response_link, response_closing_style, response_closing_other, response_link_frequency, offer_description, tone_avoid"
     )
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (
-    !hasActiveAccess({
-      plan: configRow?.plan ?? "free",
-      trial_ends_at: configRow?.trial_ends_at ?? null,
-    })
-  ) {
+  const userAccess = {
+    plan: configRow?.plan ?? "free",
+    trial_ends_at: configRow?.trial_ends_at ?? null,
+    is_free_trial: configRow?.is_free_trial,
+    free_trial_ai_responses_used: configRow?.free_trial_ai_responses_used ?? 0,
+  };
+
+  if (!canGenerateAiResponse(userAccess)) {
+    const onFreeTrial = countsTowardFreeTrialLimits(userAccess);
     return NextResponse.json(
-      { error: "Abonnement ou essai actif requis pour générer une réponse IA" },
+      {
+        error: onFreeTrial
+          ? `Limite essai gratuit atteinte (${FREE_TRIAL_AI_RESPONSES_LIMIT} réponses IA). Passe à un plan pour continuer.`
+          : "Abonnement ou essai actif requis pour générer une réponse IA",
+      },
       { status: 403 }
     );
   }
@@ -144,6 +157,10 @@ export async function POST(request: Request) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  if (countsTowardFreeTrialLimits(userAccess)) {
+    await incrementFreeTrialAiResponsesUsed(createAdminClient(), user.id);
   }
 
   return NextResponse.json({ response });

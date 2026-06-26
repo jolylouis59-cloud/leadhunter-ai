@@ -2,11 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import FreeTrialUpgradeSection from "@/components/dashboard/FreeTrialUpgradeSection";
 import LeadCard from "@/components/dashboard/LeadCard";
 import LeadSkeleton from "@/components/dashboard/LeadSkeleton";
 import ResponseModal from "@/components/dashboard/ResponseModal";
 import Toast from "@/components/dashboard/Toast";
-import { hasActiveAccess, type UserAccess } from "@/lib/access";
+import {
+  canGenerateAiResponse,
+  canReceiveNewLeads,
+  hasDashboardAccess,
+  type UserAccess,
+} from "@/lib/access";
+import {
+  FREE_TRIAL_AI_RESPONSES_LIMIT,
+  FREE_TRIAL_LEADS_LIMIT,
+  isFreeTrialAiLimitReached,
+  isFreeTrialLeadLimitReached,
+  isOnFreeTrial,
+} from "@/lib/free-trial";
 import { supabase } from "@/lib/supabase-client";
 import { cardBase, colors, fontFamily, primaryButton } from "@/lib/dashboard-styles";
 import { dedupeLeads, getLeadCreatedTimestamp, getLeadTimestamp } from "@/lib/leads-utils";
@@ -79,10 +92,18 @@ export default function DashboardPage() {
   const [userAccess, setUserAccess] = useState<UserAccess>({
     plan: "free",
     trial_ends_at: null,
+    is_free_trial: true,
+    free_trial_leads_used: 0,
+    free_trial_ai_responses_used: 0,
   });
   const [accessLoading, setAccessLoading] = useState(true);
 
-  const activeAccess = hasActiveAccess(userAccess);
+  const dashboardAccess = hasDashboardAccess(userAccess);
+  const canScanNewLeads = canReceiveNewLeads(userAccess);
+  const canGenerate = canGenerateAiResponse(userAccess);
+  const onFreeTrial = isOnFreeTrial(userAccess);
+  const freeTrialLeadsExhausted = isFreeTrialLeadLimitReached(userAccess);
+  const freeTrialAiExhausted = isFreeTrialAiLimitReached(userAccess);
 
   const fetchLeads = useCallback(async (options?: { silent?: boolean }): Promise<Lead[]> => {
     if (!options?.silent) {
@@ -141,19 +162,30 @@ export default function DashboardPage() {
           data: { user },
         } = await supabase.auth.getUser();
         if (!user) {
-          setUserAccess({ plan: "free", trial_ends_at: null });
+          setUserAccess({
+            plan: "free",
+            trial_ends_at: null,
+            is_free_trial: true,
+            free_trial_leads_used: 0,
+            free_trial_ai_responses_used: 0,
+          });
           return;
         }
 
         const { data } = await supabase
           .from("user_configs")
-          .select("plan, trial_ends_at")
+          .select(
+            "plan, trial_ends_at, is_free_trial, free_trial_leads_used, free_trial_ai_responses_used"
+          )
           .eq("user_id", user.id)
           .maybeSingle();
 
         setUserAccess({
           plan: data?.plan ?? "free",
           trial_ends_at: data?.trial_ends_at ?? null,
+          is_free_trial: data?.is_free_trial,
+          free_trial_leads_used: data?.free_trial_leads_used ?? 0,
+          free_trial_ai_responses_used: data?.free_trial_ai_responses_used ?? 0,
         });
       } finally {
         setAccessLoading(false);
@@ -240,6 +272,14 @@ export default function DashboardPage() {
   }, [activeTab, platformFilter, sortBy, minScore]);
 
   async function handleScan() {
+    if (!canScanNewLeads) {
+      setToast({
+        message: `Limite essai gratuit atteinte (${FREE_TRIAL_LEADS_LIMIT} leads). Passe à un plan pour continuer.`,
+        type: "error",
+      });
+      return;
+    }
+
     setScanning(true);
     setToast({ message: "Scan en cours sur Reddit… cela peut prendre 15-30 secondes", type: "info" });
 
@@ -280,10 +320,32 @@ export default function DashboardPage() {
         typeof result.leads_inserted === "number"
           ? result.leads_inserted
           : Math.max(0, refreshed.length - countBefore);
-      if (inserted > 0) {
+
+      if (result.free_trial_limit_reached) {
+        setToast({
+          message: `Limite essai gratuit atteinte (${FREE_TRIAL_LEADS_LIMIT} leads cumulés)`,
+          type: "info",
+        });
+      } else if (inserted > 0) {
         setToast({ message: `${inserted} nouveaux leads trouvés !`, type: "success" });
       } else {
         setToast({ message: "Aucun nouveau lead cette fois", type: "info" });
+      }
+
+      const { data: accessRow } = await supabase
+        .from("user_configs")
+        .select("plan, trial_ends_at, is_free_trial, free_trial_leads_used, free_trial_ai_responses_used")
+        .eq("user_id", user?.id ?? "")
+        .maybeSingle();
+
+      if (accessRow) {
+        setUserAccess({
+          plan: accessRow.plan ?? "free",
+          trial_ends_at: accessRow.trial_ends_at ?? null,
+          is_free_trial: accessRow.is_free_trial,
+          free_trial_leads_used: accessRow.free_trial_leads_used ?? 0,
+          free_trial_ai_responses_used: accessRow.free_trial_ai_responses_used ?? 0,
+        });
       }
     } catch (e) {
       setToast({
@@ -296,9 +358,11 @@ export default function DashboardPage() {
   }
 
   async function handleGenerate(leadId: string) {
-    if (!activeAccess) {
+    if (!canGenerate) {
       setToast({
-        message: "Abonnement ou essai actif requis pour générer une réponse IA",
+        message: freeTrialAiExhausted
+          ? `Limite essai gratuit atteinte (${FREE_TRIAL_AI_RESPONSES_LIMIT} réponses IA). Passe à un plan pour continuer.`
+          : "Abonnement ou essai actif requis pour générer une réponse IA",
         type: "error",
       });
       return;
@@ -317,6 +381,28 @@ export default function DashboardPage() {
         setModalLeadTitle(lead?.post_title ?? lead?.title ?? "Lead");
         setModalResponse(data.response);
         setModalLeadId(leadId);
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          const { data: accessRow } = await supabase
+            .from("user_configs")
+            .select(
+              "plan, trial_ends_at, is_free_trial, free_trial_leads_used, free_trial_ai_responses_used"
+            )
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (accessRow) {
+            setUserAccess({
+              plan: accessRow.plan ?? "free",
+              trial_ends_at: accessRow.trial_ends_at ?? null,
+              is_free_trial: accessRow.is_free_trial,
+              free_trial_leads_used: accessRow.free_trial_leads_used ?? 0,
+              free_trial_ai_responses_used: accessRow.free_trial_ai_responses_used ?? 0,
+            });
+          }
+        }
       } else if (res.status === 403) {
         setToast({
           message: data.error || "Abonnement ou essai actif requis",
@@ -413,7 +499,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={handleScan}
-          disabled={scanning}
+          disabled={scanning || !canScanNewLeads}
           style={{
             ...primaryButton(scanHover, scanning),
             marginTop: "24px",
@@ -502,7 +588,7 @@ export default function DashboardPage() {
         <button
           type="button"
           onClick={handleScan}
-          disabled={scanning}
+          disabled={scanning || !canScanNewLeads}
           onMouseEnter={() => setScanHover(true)}
           onMouseLeave={() => setScanHover(false)}
           style={{
@@ -593,7 +679,53 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {activeAccess && topLeadsToday.length > 0 && (
+      {onFreeTrial && (
+        <div
+          style={{
+            ...cardBase,
+            marginBottom: "24px",
+            padding: "16px 20px",
+            background: freeTrialLeadsExhausted ? "#FEF2F2" : "#F0FDF4",
+            border: `1px solid ${freeTrialLeadsExhausted ? "#FECACA" : "#86EFAC"}`,
+          }}
+        >
+          <p style={{ margin: "0 0 8px", fontSize: "14px", fontWeight: 700, color: colors.text }}>
+            Essai gratuit — {userAccess.free_trial_leads_used ?? 0}/{FREE_TRIAL_LEADS_LIMIT} leads
+            · {userAccess.free_trial_ai_responses_used ?? 0}/{FREE_TRIAL_AI_RESPONSES_LIMIT} réponses IA
+          </p>
+          <div
+            style={{
+              height: "6px",
+              background: colors.border,
+              borderRadius: "3px",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${Math.min(100, ((userAccess.free_trial_leads_used ?? 0) / FREE_TRIAL_LEADS_LIMIT) * 100)}%`,
+                background: freeTrialLeadsExhausted ? "#DC2626" : colors.accent,
+                borderRadius: "3px",
+              }}
+            />
+          </div>
+          {freeTrialLeadsExhausted && (
+            <p style={{ margin: "10px 0 0", fontSize: "13px", color: "#B91C1C" }}>
+              Limite de leads atteinte. Tes {FREE_TRIAL_LEADS_LIMIT} leads restent visibles ci-dessous.
+            </p>
+          )}
+        </div>
+      )}
+
+      {onFreeTrial && freeTrialLeadsExhausted && (
+        <FreeTrialUpgradeSection
+          title="Tu as utilisé tes 15 leads offerts"
+          subtitle="Passe à un plan pour continuer à recevoir de nouveaux prospects qualifiés."
+        />
+      )}
+
+      {dashboardAccess && topLeadsToday.length > 0 && (
         <section
           style={{
             background: colors.accent,
@@ -644,7 +776,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => handleGenerate(lead.id)}
-                    disabled={generatingId === lead.id || !activeAccess}
+                    disabled={generatingId === lead.id || !canGenerate}
                     style={{
                       background: "#ffffff",
                       color: colors.accent,
@@ -786,7 +918,7 @@ export default function DashboardPage() {
               <LeadSkeleton key={i} />
             ))}
           </>
-        ) : !activeAccess && leads.length > 0 ? (
+        ) : !dashboardAccess && leads.length > 0 ? (
           renderPaywallState()
         ) : fetchError ? (
           <div style={{ ...cardBase, padding: "48px 24px", textAlign: "center" }}>
@@ -842,7 +974,7 @@ export default function DashboardPage() {
                 onGenerate={handleGenerate}
                 onIgnore={handleIgnore}
                 generating={generatingId === lead.id}
-                canGenerate={hasActiveAccess(userAccess)}
+                canGenerate={canGenerate}
               />
             ))}
 

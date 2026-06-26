@@ -19,6 +19,7 @@ async function updateUserPlan(
       plan,
       leads_limit: leadsLimit,
       stripe_customer_id: stripeCustomerId,
+      is_free_trial: false,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "user_id" }

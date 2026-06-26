@@ -67,7 +67,7 @@ export default function LaunchOffer() {
               boxShadow: "0 4px 14px rgba(31,77,58,0.25)",
             }}
           >
-            Commencer gratuitement
+            Essai gratuit — 15 leads
           </Link>
         </div>
       </div>

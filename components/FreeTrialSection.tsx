@@ -35,7 +35,7 @@ export default function FreeTrialSection() {
             color: landingColors.text,
           }}
         >
-          Essai gratuit 7 jours — Aucune carte bancaire requise
+          Essai gratuit — 15 leads offerts, sans carte bancaire
         </h2>
         <p
           style={{
@@ -57,7 +57,7 @@ export default function FreeTrialSection() {
             fontSize: "15px",
           }}
         >
-          Commencer gratuitement →
+          Essai gratuit — 15 leads offerts →
         </a>
       </div>
     </section>

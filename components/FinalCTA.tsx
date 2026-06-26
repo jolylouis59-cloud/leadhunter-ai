@@ -14,7 +14,7 @@ export default function FinalCTA() {
         </p>
 
         <div className="mt-8">
-          <EmailForm variant="cta" buttonLabel="Commencer gratuitement" />
+          <EmailForm variant="cta" buttonLabel="Essai gratuit — 15 leads offerts" />
         </div>
 
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">

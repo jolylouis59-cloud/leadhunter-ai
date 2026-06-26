@@ -67,6 +67,7 @@ export default function OnboardingPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [freeTrialLoading, setFreeTrialLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const prospectCount = getProspectCount(icpSegment);
@@ -199,6 +200,48 @@ export default function OnboardingPage() {
       showToast("Erreur checkout: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setCheckoutLoading(null);
+    }
+  }
+
+  async function saveOnboardingAndStartFreeTrial() {
+    if (!userId) {
+      showToast("Session expirée. Reconnecte-toi.");
+      return;
+    }
+
+    if (!icpSegment || !monthlyGoal) {
+      showToast("Complète les étapes précédentes.");
+      return;
+    }
+
+    setFreeTrialLoading(true);
+
+    try {
+      const { error: saveError } = await supabase.from("user_configs").upsert(
+        {
+          user_id: userId,
+          icp_segment: icpSegment,
+          monthly_goal: monthlyGoal,
+          onboarding_completed: true,
+          is_free_trial: true,
+          free_trial_leads_used: 0,
+          free_trial_ai_responses_used: 0,
+          plan: "free",
+        },
+        { onConflict: "user_id" }
+      );
+
+      if (saveError) {
+        showToast("Erreur sauvegarde : " + saveError.message);
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (e) {
+      showToast("Erreur : " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setFreeTrialLoading(false);
     }
   }
 
@@ -549,6 +592,43 @@ export default function OnboardingPage() {
                 </button>
               </div>
             ))}
+          </div>
+
+          <div
+            style={{
+              marginTop: "32px",
+              paddingTop: "28px",
+              borderTop: `1px solid ${colors.border}`,
+              textAlign: "center",
+            }}
+          >
+            <p style={{ margin: "0 0 12px", fontSize: "15px", fontWeight: 600, color: colors.text }}>
+              Pas prêt à t&apos;engager ?
+            </p>
+            <p style={{ margin: "0 0 20px", fontSize: "14px", color: colors.textMuted }}>
+              Teste LeadHunter AI sans carte bancaire — 15 leads et 5 réponses IA offerts.
+            </p>
+            <button
+              type="button"
+              onClick={saveOnboardingAndStartFreeTrial}
+              disabled={checkoutLoading !== null || freeTrialLoading}
+              style={{
+                width: "100%",
+                maxWidth: "420px",
+                padding: "14px 24px",
+                fontSize: "15px",
+                fontWeight: 700,
+                borderRadius: "10px",
+                cursor: checkoutLoading !== null || freeTrialLoading ? "wait" : "pointer",
+                fontFamily,
+                background: "transparent",
+                color: colors.accent,
+                border: `2px solid ${colors.accent}`,
+                opacity: checkoutLoading !== null ? 0.6 : 1,
+              }}
+            >
+              {freeTrialLoading ? "Activation…" : "Essai gratuit — 15 leads →"}
+            </button>
           </div>
         </div>
       )}

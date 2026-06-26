@@ -1,4 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { canReceiveNewLeads } from "@/lib/access";
+import {
+  countsTowardFreeTrialLimits,
+  FREE_TRIAL_LEADS_LIMIT,
+  incrementFreeTrialLeadsUsed,
+} from "@/lib/free-trial";
 import { fetchRedditRss } from "@/lib/reddit-rss";
 import {
   buildIntentScorePrompt,
@@ -252,6 +258,30 @@ export async function scanRedditForUser(
     logDebug(logs, `Starting scan for user: ${userId}`);
 
     const config = await fetchUserConfig(supabase, userId, logs);
+
+    const { data: trialRow } = await supabase
+      .from("user_configs")
+      .select("plan, trial_ends_at, is_free_trial, free_trial_leads_used")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const trialAccess = {
+      plan: trialRow?.plan ?? "free",
+      trial_ends_at: trialRow?.trial_ends_at ?? null,
+      is_free_trial: trialRow?.is_free_trial,
+      free_trial_leads_used: trialRow?.free_trial_leads_used ?? 0,
+    };
+
+    const applyFreeTrialLimit = countsTowardFreeTrialLimits(trialAccess);
+    let trialLeadsUsed = trialAccess.free_trial_leads_used ?? 0;
+
+    if (applyFreeTrialLimit && !canReceiveNewLeads(trialAccess)) {
+      logError(
+        logs,
+        `Limite essai gratuit atteinte (${FREE_TRIAL_LEADS_LIMIT} leads cumulés) — scan sans insertion`
+      );
+    }
+
     logDebug(
       logs,
       `Config: ${config.subreddits.length} subreddits, ${config.keywords.length} keywords`
@@ -343,6 +373,11 @@ export async function scanRedditForUser(
         continue;
       }
 
+      if (applyFreeTrialLimit && trialLeadsUsed >= FREE_TRIAL_LEADS_LIMIT) {
+        logDebug(logs, "Limite essai gratuit atteinte — insertion ignorée");
+        continue;
+      }
+
       const leadRow = {
         user_id: userId,
         platform: "reddit",
@@ -366,6 +401,10 @@ export async function scanRedditForUser(
         logError(logs, `Insert failed: ${insertError.message}`);
       } else {
         insertCount++;
+        if (applyFreeTrialLimit) {
+          await incrementFreeTrialLeadsUsed(supabase, userId);
+          trialLeadsUsed++;
+        }
         logDebug(logs, `✓ Lead inserted (score ${intent.score}): ${post.title.slice(0, 50)}`);
       }
     }

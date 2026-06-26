@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
+import { canReceiveNewLeads } from "@/lib/access";
 import {
-  fetchRedditRss,
-  REDDIT_RSS_HEADERS,
-  type RedditRssFetchResult,
-} from "@/lib/reddit-rss";
+  countsTowardFreeTrialLimits,
+  FREE_TRIAL_LEADS_LIMIT,
+  incrementFreeTrialLeadsUsed,
+} from "@/lib/free-trial";
 import {
   buildIntentScorePrompt,
   MIN_INTENT_SCORE_TO_INSERT,
@@ -14,6 +14,13 @@ import {
   pickScanCombinations,
   type ScanCombination,
 } from "@/lib/scan-locale";
+import {
+  fetchRedditRss,
+  REDDIT_RSS_HEADERS,
+  type RedditRssFetchResult,
+} from "@/lib/reddit-rss";
+import { createAdminClient } from "@/lib/supabase-admin";
+import { createClient } from "@/lib/supabase-server";
 
 const REDDIT_REQUEST_DELAY_MS = 500;
 const REDDIT_RATE_LIMIT_RETRY_MS = 2000;
@@ -355,6 +362,19 @@ export async function POST(req: Request) {
 
   const userId = user.id;
 
+  const { data: trialRow } = await supabase
+    .from("user_configs")
+    .select("plan, trial_ends_at, is_free_trial, free_trial_leads_used")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const trialAccess = {
+    plan: trialRow?.plan ?? "free",
+    trial_ends_at: trialRow?.trial_ends_at ?? null,
+    is_free_trial: trialRow?.is_free_trial,
+    free_trial_leads_used: trialRow?.free_trial_leads_used ?? 0,
+  };
+
   const config = await fetchUserConfig(supabase, userId);
   const { keywords, subreddits } = config;
 
@@ -474,7 +494,23 @@ export async function POST(req: Request) {
     after: postsToInsert.length,
   });
 
+  const applyFreeTrialLimit = countsTowardFreeTrialLimits(trialAccess);
+  let trialLeadsUsed = trialAccess.free_trial_leads_used ?? 0;
+  const freeTrialLimitReached = applyFreeTrialLimit && !canReceiveNewLeads(trialAccess);
+
+  if (freeTrialLimitReached) {
+    scanErrors.push(
+      `Limite essai gratuit atteinte (${FREE_TRIAL_LEADS_LIMIT} leads cumulés)`
+    );
+  }
+
+  let adminClient: ReturnType<typeof createAdminClient> | null = null;
+
   for (const post of postsToInsert) {
+    if (applyFreeTrialLimit && trialLeadsUsed >= FREE_TRIAL_LEADS_LIMIT) {
+      break;
+    }
+
     console.log("[INSERT] tentative:", { userId, title: post.title, url: post.url, score: post.intentScore });
     const { data: inserted, error: insertError } = await supabase.from("leads").upsert(
       {
@@ -517,6 +553,11 @@ export async function POST(req: Request) {
       scanErrors.push(message);
     } else {
       insertCount++;
+      if (applyFreeTrialLimit) {
+        if (!adminClient) adminClient = createAdminClient();
+        await incrementFreeTrialLeadsUsed(adminClient, userId);
+        trialLeadsUsed++;
+      }
     }
   }
 
@@ -534,6 +575,7 @@ export async function POST(req: Request) {
     leads_inserted: insertCount,
     leads_scored: scoredCount,
     leads_below_threshold: belowThreshold,
+    free_trial_limit_reached: freeTrialLimitReached,
   };
 
   const totalPosts = allPosts.length;

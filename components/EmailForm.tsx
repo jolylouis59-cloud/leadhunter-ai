@@ -11,7 +11,7 @@ type EmailFormProps = {
 
 export default function EmailForm({
   variant = "hero",
-  buttonLabel = "Commencer gratuitement",
+  buttonLabel = "Essai gratuit — 15 leads offerts",
 }: EmailFormProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "duplicate" | "error">(

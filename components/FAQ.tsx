@@ -44,7 +44,7 @@ const FAQ_ITEMS: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Puis-je tester avant de payer ?",
-    a: "Oui. Tous les plans incluent 7 jours d'essai gratuit, sans carte bancaire. Tu configures ton compte en 2 minutes et les premiers leads arrivent dans l'heure.",
+    a: "Oui. Essai gratuit sans carte bancaire : 15 leads et 5 réponses IA offerts. Tu configures ton compte en 2 minutes et les premiers leads arrivent dans l'heure.",
   },
   {
     q: "Comment fonctionne la facturation ?",

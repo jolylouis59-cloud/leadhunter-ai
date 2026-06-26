@@ -47,7 +47,7 @@ const plans = [
       "Réponse IA en 1 clic",
       "Alertes email",
     ] as PlanFeature[],
-    cta: "Commencer gratuitement →",
+    cta: "Essai gratuit — 15 leads →",
     popular: false,
   },
   {
@@ -71,7 +71,7 @@ const plans = [
       "Alertes Slack + email",
       "Dashboard analytics",
     ] as PlanFeature[],
-    cta: "Commencer gratuitement →",
+    cta: "Essai gratuit — 15 leads →",
     popular: true,
   },
   {
@@ -90,7 +90,7 @@ const plans = [
       "Support prioritaire",
       "Onboarding dédié",
     ] as PlanFeature[],
-    cta: "Commencer gratuitement →",
+    cta: "Essai gratuit — 15 leads →",
     popular: false,
   },
 ];
@@ -234,7 +234,7 @@ export default function Pricing() {
             fontSize: "16px",
           }}
         >
-          7 jours gratuits sur tous les plans. Aucune CB requise.
+          Essai gratuit — 15 leads offerts. Aucune carte bancaire requise.
         </p>
 
         <div

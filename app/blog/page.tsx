@@ -648,10 +648,10 @@ export default function BlogPage() {
               textAlign: "center",
             }}
           >
-            Voir mes premiers leads gratuitement →
+            Essai gratuit — 15 leads offerts →
           </Link>
           <p style={{ fontSize: 13, opacity: 0.6, marginTop: 20, lineHeight: 1.8, marginBottom: 0 }}>
-            ✓ 7 jours gratuits · ✓ Aucune carte bancaire · ✓ Configuration en 2 minutes
+            ✓ 15 leads offerts · ✓ Aucune carte bancaire · ✓ Configuration en 2 minutes
             <br />
             ✓ Annulation en 1 clic · ✓ Support humain inclus
           </p>
