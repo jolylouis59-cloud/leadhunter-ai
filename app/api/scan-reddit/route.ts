@@ -12,6 +12,7 @@ import {
 import {
   isFrancophoneTargeted,
   pickScanCombinations,
+  applyLanguageScoreCap,
   type ScanCombination,
 } from "@/lib/scan-locale";
 import {
@@ -460,7 +461,23 @@ export async function POST(req: Request) {
       continue;
     }
 
-    const intentScore = intent.score;
+    const intentResult = applyLanguageScoreCap(
+      intent.score,
+      config.keywords,
+      post.title,
+      post.selftext || ""
+    );
+    const intentScore = intentResult.score;
+
+    if (intentResult.capped) {
+      console.log("[SCORE] plafond langue:", {
+        title: post.title?.substring(0, 50),
+        original: intent.score,
+        capped: intentScore,
+        reason: intentResult.reason,
+      });
+    }
+
     const aboveThreshold = intentScore >= MIN_INTENT_SCORE_TO_INSERT;
     allScores.push(intentScore);
     scoredPostsLog.push({

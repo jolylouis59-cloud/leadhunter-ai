@@ -10,7 +10,7 @@ import {
   buildIntentScorePrompt,
   MIN_INTENT_SCORE_TO_INSERT,
 } from "@/lib/intent-score-prompt";
-import { pickScanCombinations } from "@/lib/scan-locale";
+import { pickScanCombinations, applyLanguageScoreCap } from "@/lib/scan-locale";
 
 const DEFAULT_CONFIG = {
   product_description: "outil de prospection B2B automatisé",
@@ -368,7 +368,22 @@ export async function scanRedditForUser(
 
       if (!intent) continue;
 
-      if (intent.score < MIN_INTENT_SCORE_TO_INSERT) {
+      const intentResult = applyLanguageScoreCap(
+        intent.score,
+        config.keywords,
+        post.title,
+        post.selftext?.slice(0, 500) || ""
+      );
+      const cappedScore = intentResult.score;
+
+      if (intentResult.capped) {
+        logDebug(
+          logs,
+          `Plafond langue ${intent.score}→${cappedScore}: "${post.title.slice(0, 50)}…"`
+        );
+      }
+
+      if (cappedScore < MIN_INTENT_SCORE_TO_INSERT) {
         belowThreshold++;
         continue;
       }
@@ -386,7 +401,7 @@ export async function scanRedditForUser(
         post_url: postUrl,
         subreddit: post.subreddit,
         author: post.author,
-        intent_score: intent.score,
+        intent_score: cappedScore,
         status: "new",
       };
 
@@ -405,7 +420,7 @@ export async function scanRedditForUser(
           await incrementFreeTrialLeadsUsed(supabase, userId);
           trialLeadsUsed++;
         }
-        logDebug(logs, `✓ Lead inserted (score ${intent.score}): ${post.title.slice(0, 50)}`);
+        logDebug(logs, `✓ Lead inserted (score ${cappedScore}): ${post.title.slice(0, 50)}`);
       }
     }
 

@@ -1,7 +1,6 @@
 export const KNOWN_FRANCOPHONE_SUBREDDITS = new Set([
   "frenchstartup",
   "entrepreneur_fr",
-  "entrepreneurs",
   "entrepreneuriat",
   "startupsfr",
   "france",
@@ -15,9 +14,24 @@ export const KNOWN_FRANCOPHONE_SUBREDDITS = new Set([
   "nocode",
   "consulting",
   "coaching",
-  "sideproject",
-  "business",
 ]);
+
+/** Anglicismes / termes métier neutres — ne signalent pas un profil anglophone. */
+const NEUTRAL_KEYWORD_TOKENS = [
+  "saas",
+  "b2b",
+  "growth",
+  "startup",
+  "marketing",
+  "lead",
+  "leads",
+  "client",
+  "clients",
+] as const;
+
+export const LANGUAGE_MISMATCH_MAX_SCORE = 15;
+
+const MULTILINGUAL_ENGLISH_RATIO = 0.25;
 
 export function isFrancophoneSubreddit(subreddit: string): boolean {
   const name = subreddit.replace(/^r\//i, "").trim().toLowerCase();
@@ -27,11 +41,24 @@ export function isFrancophoneSubreddit(subreddit: string): boolean {
   if (/francophone|francais|français/i.test(name)) return true;
   if (/quebec|belgique|suisse|montreal|montréal|paris|lyon|bruxelles/i.test(name)) return true;
   if (/(^|_)fr($|_)/i.test(name) || /_fr$/i.test(name)) return true;
-  if (/entrepreneur/i.test(name) && !/entrepreneurride/i.test(name)) return true;
+  if (/entrepreneur/i.test(name) && /fr|franc|quebec|francophone/i.test(name)) return true;
   if (/finances?|boulot|emploi|travail|salaire/i.test(name)) return true;
   if (/conseil/i.test(name)) return true;
   if (/marketing|freelance|solopreneur/i.test(name) && /fr|franc|quebec/i.test(name)) return true;
   return false;
+}
+
+export function isNeutralOnlyKeyword(keyword: string): boolean {
+  const k = keyword.trim().toLowerCase();
+  if (!k) return true;
+
+  let remainder = ` ${k} `;
+  for (const token of NEUTRAL_KEYWORD_TOKENS) {
+    remainder = remainder.replace(new RegExp(`\\b${token}\\b`, "gi"), " ");
+  }
+
+  remainder = remainder.replace(/[^a-zàâäéèêëïîôùûüÿçœæ0-9]+/gi, " ").trim();
+  return remainder.length === 0;
 }
 
 export function isFrenchKeyword(keyword: string): boolean {
@@ -50,17 +77,18 @@ export function isFrenchKeyword(keyword: string): boolean {
 export function isEnglishKeyword(keyword: string): boolean {
   const k = keyword.trim().toLowerCase();
   if (!k) return false;
+  if (isNeutralOnlyKeyword(keyword)) return false;
   if (/[àâäéèêëïîôùûüÿçœæ]/.test(k)) return false;
   if (isFrenchKeyword(keyword)) return false;
 
   const englishPatterns = [
     /\b(find|finding|looking|searching|need|want|seeking)\b/,
-    /\b(leads?|clients?|customers?|prospects?)\b/,
-    /\b(tool|tools|software|saas|app|platform|stack)\b/,
-    /\b(b2b|cold email|outreach|prospecting|prospect)\b/,
-    /\b(how to|what|which|best|alternative|recommend|suggestion)\b/,
+    /\b(customers?|prospects?)\b/,
+    /\b(tool|tools|software|app|platform|stack)\b/,
+    /\b(cold email|outreach|prospecting|prospect)\b/,
+    /\b(how to|what|which|best|recommend|suggestion)\b/,
     /\b(the|for|with|without|your|my|our|any)\b/,
-    /\b(growth|sales|marketing|agency|founder|startup)\b/,
+    /\b(sales|agency|founder)\b/,
   ];
 
   return englishPatterns.some((pattern) => pattern.test(k));
@@ -83,15 +111,23 @@ export function analyzeKeywordLanguages(keywords: string[]): KeywordLanguageProf
   let englishCount = 0;
 
   for (const keyword of cleaned) {
-    const fr = isFrenchKeyword(keyword);
-    const en = isEnglishKeyword(keyword);
-    if (fr) frenchCount++;
-    if (en) englishCount++;
+    if (isNeutralOnlyKeyword(keyword)) continue;
+
+    if (isFrenchKeyword(keyword)) {
+      frenchCount++;
+    } else if (isEnglishKeyword(keyword)) {
+      englishCount++;
+    }
   }
 
+  const meaningfulCount = frenchCount + englishCount;
   const hasFrench = frenchCount > 0;
   const hasEnglish = englishCount > 0;
-  const isMultilingual = hasFrench && hasEnglish;
+  const isMultilingual =
+    hasFrench &&
+    hasEnglish &&
+    meaningfulCount > 0 &&
+    englishCount / meaningfulCount >= MULTILINGUAL_ENGLISH_RATIO;
 
   let targetLanguage: "fr" | "en" | null = null;
   if (!isMultilingual) {
@@ -100,6 +136,80 @@ export function analyzeKeywordLanguages(keywords: string[]): KeywordLanguageProf
   }
 
   return { hasFrench, hasEnglish, isMultilingual, targetLanguage };
+}
+
+function countPatternMatches(text: string, pattern: RegExp): number {
+  const matches = text.match(pattern);
+  return matches?.length ?? 0;
+}
+
+export function isPostPredominantlyEnglish(title: string, body: string): boolean {
+  const text = `${title} ${body}`.replace(/\s+/g, " ").trim();
+  if (!text) return false;
+
+  const frenchPatterns = [
+    /\b(je|tu|nous|vous|ils|elles|le|la|les|un|une|des|du|de|pour|par|avec|sans|dans|sur|est|sont|pas|plus|très|bien|comment|pourquoi|quel|quelle|quels|quelles|mon|ma|mes|ton|ta|tes|notre|votre|leur|ce|cette|ces|qui|que|quoi|où|aujourd'hui|français|francais|cherche|chercher|trouve|trouver|besoin|prospection|clients?|leads?)\b/gi,
+  ];
+  const englishPatterns = [
+    /\b(i|you|we|they|the|a|an|and|or|but|for|with|without|from|to|in|on|at|is|are|was|were|have|has|had|do|does|did|my|your|our|their|this|that|these|those|what|which|who|how|why|when|where|anyone|someone|something|looking|need|want|should|would|could|can't|don't|doesn't|i'm|we're|you're)\b/gi,
+  ];
+
+  let frenchScore = countPatternMatches(text, frenchPatterns[0]);
+  let englishScore = countPatternMatches(text, englishPatterns[0]);
+
+  if (/[àâäéèêëïîôùûüÿçœæ]/i.test(text)) frenchScore += 3;
+
+  return englishScore >= 2 && englishScore > frenchScore;
+}
+
+export function isPostPredominantlyFrench(title: string, body: string): boolean {
+  const text = `${title} ${body}`.replace(/\s+/g, " ").trim();
+  if (!text) return false;
+
+  const frenchPatterns = [
+    /\b(je|tu|nous|vous|ils|elles|le|la|les|un|une|des|du|de|pour|par|avec|sans|dans|sur|est|sont|pas|plus|très|bien|comment|pourquoi|quel|quelle|quels|quelles|mon|ma|mes|ton|ta|tes|notre|votre|leur|ce|cette|ces|qui|que|quoi|où|aujourd'hui|français|francais|cherche|chercher|trouve|trouver|besoin|prospection|clients?|leads?)\b/gi,
+  ];
+  const englishPatterns = [
+    /\b(i|you|we|they|the|a|an|and|or|but|for|with|without|from|to|in|on|at|is|are|was|were|have|has|had|do|does|did|my|your|our|their|this|that|these|those|what|which|who|how|why|when|where|anyone|someone|something|looking|need|want|should|would|could|can't|don't|doesn't|i'm|we're|you're)\b/gi,
+  ];
+
+  let frenchScore = countPatternMatches(text, frenchPatterns[0]);
+  let englishScore = countPatternMatches(text, englishPatterns[0]);
+
+  if (/[àâäéèêëïîôùûüÿçœæ]/i.test(text)) frenchScore += 3;
+
+  return frenchScore >= 2 && frenchScore > englishScore;
+}
+
+export function applyLanguageScoreCap(
+  score: number,
+  keywords: string[],
+  title: string,
+  selftext: string
+): { score: number; capped: boolean; reason?: string } {
+  const profile = analyzeKeywordLanguages(keywords);
+
+  if (profile.targetLanguage === "fr" && isPostPredominantlyEnglish(title, selftext)) {
+    if (score > LANGUAGE_MISMATCH_MAX_SCORE) {
+      return {
+        score: LANGUAGE_MISMATCH_MAX_SCORE,
+        capped: true,
+        reason: "Post majoritairement anglais — plafond langue (profil FR)",
+      };
+    }
+  }
+
+  if (profile.targetLanguage === "en" && isPostPredominantlyFrench(title, selftext)) {
+    if (score > LANGUAGE_MISMATCH_MAX_SCORE) {
+      return {
+        score: LANGUAGE_MISMATCH_MAX_SCORE,
+        capped: true,
+        reason: "Post majoritairement français — plafond langue (profil EN)",
+      };
+    }
+  }
+
+  return { score, capped: false };
 }
 
 export type ScanCombination = { subreddit: string; keyword: string };
