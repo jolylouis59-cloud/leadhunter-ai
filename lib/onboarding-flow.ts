@@ -1,12 +1,20 @@
-export type IcpSegmentId = "founders" | "sales_directors" | "freelancers" | "agencies";
+export type IcpSegmentId =
+  | "founders"
+  | "sales_directors"
+  | "freelancers"
+  | "agencies"
+  | "others";
 
 export type MonthlyGoalId = "first_10" | "scale_50" | "automate";
 
+const ONBOARDING_POSTS_POTENTIAL_COUNT = 143;
+
 export const ICP_OPTIONS: { id: IcpSegmentId; label: string; prospectCount: number }[] = [
-  { id: "founders", label: "Fondateurs startups", prospectCount: 847 },
-  { id: "sales_directors", label: "Directeurs commerciaux", prospectCount: 1891 },
-  { id: "freelancers", label: "Freelances / Consultants", prospectCount: 634 },
-  { id: "agencies", label: "Agences", prospectCount: 1243 },
+  { id: "founders", label: "Fondateurs startups", prospectCount: ONBOARDING_POSTS_POTENTIAL_COUNT },
+  { id: "sales_directors", label: "Directeurs commerciaux", prospectCount: ONBOARDING_POSTS_POTENTIAL_COUNT },
+  { id: "freelancers", label: "Freelances / Consultants", prospectCount: ONBOARDING_POSTS_POTENTIAL_COUNT },
+  { id: "agencies", label: "Agences", prospectCount: ONBOARDING_POSTS_POTENTIAL_COUNT },
+  { id: "others", label: "Autres", prospectCount: ONBOARDING_POSTS_POTENTIAL_COUNT },
 ];
 
 export const GOAL_OPTIONS: { id: MonthlyGoalId; label: string }[] = [

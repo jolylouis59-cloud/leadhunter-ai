@@ -470,7 +470,7 @@ export default function OnboardingPage() {
               >
                 {prospectCount.toLocaleString("fr-FR")}
               </span>{" "}
-              prospects correspondant à ton profil.
+              posts à potentiel de lead cette semaine
             </p>
           )}
         </div>
@@ -487,11 +487,10 @@ export default function OnboardingPage() {
               textAlign: "center",
             }}
           >
-            Tes{" "}
             <span style={{ fontSize: "clamp(2rem, 10vw, 4rem)", color: colors.accent }}>
               {prospectCount.toLocaleString("fr-FR")}
             </span>{" "}
-            leads t&apos;attendent.
+            posts à potentiel détectés cette semaine
           </h1>
           <p
             style={{
